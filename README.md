@@ -31,9 +31,9 @@ Classifies AI systems across four dimensions:
 
 ---
 
-### Automated Governance Mapping
+### Governance Mapping
 
-Generates governance information including:
+Governance information including:
 
 - Business Owner
 - Technical Owner
