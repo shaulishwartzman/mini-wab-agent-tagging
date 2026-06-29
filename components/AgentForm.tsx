@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { fields } from "@/components/questionnaire/fields";
 import { createAgentCard } from "@/lib/agent-engine/createAgentCard";
 import {
   getAgents,
-  saveAgent,
-  deleteAgent,
 } from "@/lib/storage/agentsStorage";
 
 type AgentCard = {
@@ -23,10 +21,8 @@ type AgentCard = {
   governance: {
     agentOwner: string;
     technicalOwner: string;
-    accountableOwner: string;
     changeApprover: string;
     oversightMechanism: string;
-    oversightOwner: string;
   };
   riskScenarios: string[];
 };
@@ -156,8 +152,6 @@ export default function AgentForm() {
       fields,
     }) as AgentCard;
 
-    saveAgent(card);
-
     const updated = getAgents();
     setAgents([...updated]);
     setResult(card);
@@ -169,7 +163,6 @@ export default function AgentForm() {
   };
 
   const handleDelete = (id: string) => {
-    deleteAgent(id);
     const updated = getAgents();
     setAgents([...updated]);
     if (result?.id === id) setResult(null);
