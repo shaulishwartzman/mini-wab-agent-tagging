@@ -1,4 +1,23 @@
-export const fields = [
+type Option = {
+  option_id: string;
+  label: string;
+};
+
+type Field =
+  | {
+      question_id: string;
+      question_text: string;
+      options: Option[];
+      type?: never;
+    }
+  | {
+      question_id: string;
+      question_text: string;
+      type: "text";
+      options?: never;
+    };
+
+export const fields: Field[] = [
   {
     question_id: "q1_autonomy",
     question_text: "רמת האוטונומיה וקבלת ההחלטות של מערכת ה-AI:",
@@ -92,7 +111,7 @@ export const fields = [
       {
         option_id: "M2",
         label:
-          "מרובה מודלים (Multi-Agent System) – המערכת מהווה חלק מרשת רכיבי AI מבוזרים המשתפים פעולה ומחליפים מידע ביניהם.",
+          "מרובה סוכנים (Multi-Agent System) – המערכת מהווה חלק מרשת רכיבי AI מבוזרים המשתפים פעולה ומחליפים מידע ביניהם.",
       },
       {
         option_id: "M3",
@@ -106,25 +125,28 @@ export const fields = [
       },
     ],
   },
-  
+
   {
-  question_id: "gov_owner",
-  question_text: "מי המנהל הבכיר הנושא באחריות הכוללת לפעילות הסוכן? (למשל: מנהל מחלקה או ראש אגף).",
-  type: "text"
-},
-{
-  question_id: "gov_tech",
-  question_text: "מי אחראי על השימוש והניהול הרציף של הסוכן?",
-  type: "text"
-},
-{
-  question_id: "gov_approver",
-  question_text: "מי הגורם המוסמך לאשר שינויים משמעותיים בסוכן? (למשל: עדכון חוקים עסקיים או הוספת יכולות חדשות).",
-  type: "text"
-},
-{
-  question_id: "gov_monitoring",
-  question_text: "כיצד אתם תעקבו אחרי הפעילות של הסוכן בשוטף כדי לוודא שהוא עובד נכון ולא טועה? (למשל: זמני בקרה קבועים, דוחות, או התראות אוטומטיות על שגיאות).",
-  type: "text"
-}
+    question_id: "gov_owner",
+    question_text:
+      "מי המנהל הבכיר הנושא באחריות הכוללת לפעילות הסוכן? (למשל: מנהל מחלקה או ראש אגף).",
+    type: "text",
+  },
+  {
+    question_id: "gov_tech",
+    question_text: "מי אחראי על השימוש והניהול הרציף של הסוכן?",
+    type: "text",
+  },
+  {
+    question_id: "gov_approver",
+    question_text:
+      "מי הגורם המוסמך לאשר שינויים משמעותיים בסוכן? (למשל: עדכון חוקים עסקיים או הוספת יכולות חדשות).",
+    type: "text",
+  },
+  {
+    question_id: "gov_monitoring",
+    question_text:
+      "כיצד אתם תעקבו אחרי הפעילות של הסוכן בשוטף כדי לוודא שהוא עובד נכון ולא טועה? (למשל: זמני בקרה קבועים, דוחות, או התראות אוטומטיות על שגיאות).",
+    type: "text",
+  },
 ];

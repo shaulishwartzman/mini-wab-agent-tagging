@@ -48,7 +48,7 @@ const theme = {
 
 const getReadableAnswer = (fieldId: string, optionId: string) => {
   const field = fields.find(f => f.question_id === fieldId);
-  const option = field?.options.find(o => o.option_id === optionId);
+  const option = field?.options?.find(o => o.option_id === optionId);
   return option ? option.label : optionId;
 };
 

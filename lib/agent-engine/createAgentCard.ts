@@ -5,11 +5,19 @@ type Option = {
   label: string;
 };
 
-type Question = {
-  question_id: string;
-  question_text: string;
-  options: Option[];
-};
+type Question =
+  | {
+      question_id: string;
+      question_text: string;
+      options: Option[];
+      type?: never;
+    }
+  | {
+      question_id: string;
+      question_text: string;
+      type: "text";
+      options?: never;
+    };
 
 type Fields = Question[];
 
@@ -74,9 +82,15 @@ export function createAgentCard(params: {
 
   const getLabel = (qid: string, optionId: string) => {
     const question = fields.find((q) => q.question_id === qid);
-    const option = question?.options.find(
+
+    if (!question || !("options" in question) || !question.options?.length) {
+      return optionId;
+      }
+
+    const option = question.options.find(
       (o) => o.option_id === optionId
     );
+    
     return option?.label || optionId;
   };
 
