@@ -20,6 +20,9 @@ export type AgentCard = {
 
 const STORAGE_KEY = "agents";
 
+/**
+ * שליפת כל כרטיסי הסוכנים השמורים מה-LocalStorage
+ */
 export function getAgents(): AgentCard[] {
   if (typeof window === "undefined") return [];
 
@@ -27,6 +30,21 @@ export function getAgents(): AgentCard[] {
   return data ? JSON.parse(data) : [];
 }
 
+/**
+ * שמירת מערך שלם של סוכנים ב-LocalStorage
+ */
 export function saveAgents(agents: AgentCard[]) {
+  if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(agents));
+}
+
+/**
+ * מחיקת סוכן ספציפי לפי ה-ID שלו ושמירה מחדש של הרשימה המעודכנת
+ */
+export function deleteAgent(id: string) {
+  if (typeof window === "undefined") return;
+
+  const currentAgents = getAgents();
+  const updatedAgents = currentAgents.filter((agent) => agent.id !== id);
+  saveAgents(updatedAgents);
 }

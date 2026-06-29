@@ -5,6 +5,8 @@ import { fields } from "@/components/questionnaire/fields";
 import { createAgentCard } from "@/lib/agent-engine/createAgentCard";
 import {
   getAgents,
+  deleteAgent,
+  saveAgents,
 } from "@/lib/storage/agentsStorage";
 
 type AgentCard = {
@@ -146,25 +148,36 @@ export default function AgentForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // 1. יצירת הכרטיס החדש
     const card = createAgentCard({
       agentName,
       answers,
       fields,
     }) as AgentCard;
 
-    const updated = getAgents();
-    setAgents([...updated]);
+    // 2. שליפת ההיסטוריה השמורה ועדכון הזיכרון הלוקלי עם הכרטיס החדש
+    const existingAgents = getAgents();
+    const updatedAgents = [card, ...existingAgents];
+    saveAgents(updatedAgents);
+
+    // 3. עדכון ה-State של React לרנדור מיידי
+    setAgents(updatedAgents);
     setResult(card);
 
     window.dispatchEvent(new Event("agentsUpdated"));
 
+    // 4. איפוס השדות
     setAgentName("");
     setAnswers({});
   };
 
   const handleDelete = (id: string) => {
-    const updated = getAgents();
-    setAgents([...updated]);
+    // מחיקה מהזיכרון הלוקלי דרך פונקציית הסטורג'
+    deleteAgent(id);
+    
+    // עדכון ה-State ישירות ב-React מבלי להמתין לקריאה חוזרת
+    setAgents((prevAgents) => prevAgents.filter((agent) => agent.id !== id));
+    
     if (result?.id === id) setResult(null);
     
     window.dispatchEvent(new Event("agentsUpdated"));
@@ -201,7 +214,8 @@ export default function AgentForm() {
               fontSize: 15,
               outline: "none",
               boxSizing: "border-box",
-              color: theme.textMain
+              color: theme.textMain,
+              textAlign: "right"
             }}
           />
         </div>
@@ -217,15 +231,14 @@ export default function AgentForm() {
                 <input
                  type="text"
                  value={answers[q.question_id] || ""}
-                 onChange={(e) =>
-                  handleChange(q.question_id, e.target.value)
-                 }
+                 onChange={(e) => handleChange(q.question_id, e.target.value)}
                  style={{
                   width: "100%",
                   padding: "12px 16px",
                   borderRadius: 10,
                   border: `1px solid ${theme.border}`,
                   fontSize: 13,
+                  textAlign: "right"
                 }}
               />
             ) :      
@@ -260,7 +273,7 @@ export default function AgentForm() {
           </div>
         ))}
 
-        <button type="submit" style={{ backgroundColor: theme.primary, color: "#fff", border: "none", padding: "14px 24px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
+        <button type="submit" style={{ backgroundColor: theme.primary, color: "#fff", border: "none", padding: "14px 24px", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", transition: "background-color 0.2s" }}>
           הפק כרטיס משילות וסיכונים
         </button>
       </form>
@@ -276,7 +289,7 @@ export default function AgentForm() {
       {/* רשימת מערכות שמורות בארגון - פריסה רוחבית מתרחבת */}
       <div style={{ marginBottom: 40 }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: theme.textMain, marginBottom: 16 }}>
-          הסוכנים שלך במאגר  ({agents.length})
+          הסוכנים שלך במאגר ({agents.length})
         </h3>
 
         {agents.length === 0 ? (

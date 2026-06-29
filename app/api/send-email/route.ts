@@ -17,10 +17,8 @@ type AgentCard = {
   governance: {
     agentOwner: string;
     technicalOwner: string;
-    accountableOwner: string;
     changeApprover: string;
     oversightMechanism: string;
-    oversightOwner: string;
   };
   riskScenarios: string[];
 };
@@ -101,8 +99,8 @@ ${introText}
                 <ul>
                   <li><b>המנהל הבכיר הנושא באחריות:</b> ${a.governance?.agentOwner || "-"}</li>
                   <li><b>מפעיל הסוכן:</b> ${a.governance?.technicalOwner || "-"}</li>
-                  <li><b>גורם מאשר שינויים: </b> ${a.governance?.accountableOwner || "-"}</li>
-                  <li><b>מנגנון פיקוח מוגדר:</b> ${a.governance?.changeApprover || "-"}</li>
+                  <li><b>גורם מאשר שינויים: </b> ${a.governance?.changeApprover || "-"}</li>
+                  <li><b>מנגנון פיקוח מוגדר:</b> ${a.governance?.oversightMechanism || "-"}</li>
                 </ul>
 
                 <h4 style="color:#b91c1c">תרחישי סיכון</h4>
