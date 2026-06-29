@@ -42,12 +42,10 @@ export async function POST(req: Request) {
     }
 
     const introText = `
-מערכת זו מפיקה דוח משילות (AI Governance Report) עבור מערכות AI ארגוניות.
-הדוח כולל סיווג רמת אוטונומיה, מודל ארכיטקטורה, יכולות מערכת, מנגנוני ניהול, 
-גורמי אחריות ארגוניים ותרחישי סיכון מרכזיים.
+מערכת זו מפיקה דוח משילות (AI Governance Report) עבור סוכני AI ארגונים.
+הדוח כולל סיווג רמת אוטונומיה, מודל ארכיטקטורה, יכולות מערכת, מנגנוני ניהול, גורמי אחריות ארגוניים ותרחישי סיכון מרכזיים.
 
-כל סוכן מייצג מערכת AI פנימית בארגון, והסיווג נועד לסייע לצוותי אבטחת מידע, IT ו־CISO
-לקבוע רמות בקרה, פיקוח וניהול סיכונים נדרשים. במקרה שיש פרטים חסרים יש להשלים על ידי הגורמים הרלוונטים.
+הסיווג נועד לסייע לצוותי אבטחת מידע ול-CISO בקבלת החלטה לגבי אישור או דחייה של הפעלת הסוכנים בארגון.
 `;
 
     const html = `
@@ -101,11 +99,10 @@ ${introText}
                 <h4>משילות (Governance)</h4>
 
                 <ul>
-                  <li><b>Owner:</b> ${a.governance?.agentOwner || "-"}</li>
-                  <li><b>Technical Owner:</b> ${a.governance?.technicalOwner || "-"}</li>
-                  <li><b>Accountable:</b> ${a.governance?.accountableOwner || "-"}</li>
-                  <li><b>Change Approver:</b> ${a.governance?.changeApprover || "-"}</li>
-                  <li><b>Oversight:</b> ${a.governance?.oversightMechanism || "-"}</li>
+                  <li><b>המנהל הבכיר הנושא באחריות:</b> ${a.governance?.agentOwner || "-"}</li>
+                  <li><b>מפעיל הסוכן:</b> ${a.governance?.technicalOwner || "-"}</li>
+                  <li><b>גורם מאשר שינויים: </b> ${a.governance?.accountableOwner || "-"}</li>
+                  <li><b>מנגנון פיקוח מוגדר:</b> ${a.governance?.changeApprover || "-"}</li>
                 </ul>
 
                 <h4 style="color:#b91c1c">תרחישי סיכון</h4>

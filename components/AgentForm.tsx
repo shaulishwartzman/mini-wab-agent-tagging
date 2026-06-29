@@ -100,8 +100,8 @@ function RenderPrettyCard({ card, isDark = false }: { card: AgentCard, isDark?: 
         <div style={{ borderTop: sectionBorder, paddingTop: 16 }}>
           <h4 style={{ margin: "0 0 10px 0", fontSize: 15, fontWeight: 700, color: isDark ? "#38bdf8" : theme.primary }}>👥 מודל משילות וגורמים אחראיים (Governance)</h4>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, fontSize: 13, paddingRight: 4 }}>
-            <div><strong>מנהל עסקי (Owner):</strong> <span style={{ color: subTextColor }}>{card.governance.agentOwner || "למילוי על ידי הגורם הרלוונטי"}</span></div>
-            <div><strong>מוביל טכנולוגי:</strong> <span style={{ color: subTextColor }}>{card.governance.technicalOwner || "למילוי על ידי הגורם הרלוונטי"}</span></div>
+            <div><strong>המנהל הבכיר הנושא באחריות:</strong> <span style={{ color: subTextColor }}>{card.governance.agentOwner || "למילוי על ידי הגורם הרלוונטי"}</span></div>
+            <div><strong>מפעיל הסוכן:</strong> <span style={{ color: subTextColor }}>{card.governance.technicalOwner || "למילוי על ידי הגורם הרלוונטי"}</span></div>
             <div><strong>גורם מאשר שינויים:</strong> <span style={{ color: subTextColor }}>{card.governance.changeApprover || "למילוי על ידי הגורם הרלוונטי"}</span></div>
             <div><strong>מנגנון פיקוח מוגדר:</strong> <span style={{ color: subTextColor }}>{card.governance.oversightMechanism || "למילוי על ידי הגורם הרלוונטי"}</span></div>
           </div>
@@ -184,15 +184,16 @@ export default function AgentForm() {
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 24, backgroundColor: theme.cardBg, padding: 30, borderRadius: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.1)", border: `1px solid ${theme.border}`, marginBottom: 32 }}>
         <div>
           <h2 style={{ margin: "0 0 8px 0", color: theme.textMain, fontSize: 24, fontWeight: 700 }}>
-            מבדק משילות והערכת סיכוני AI בארגון
+           טופס בקשה להפעלת סוכן AI
           </h2>
           <p style={{ margin: 0, color: theme.textMuted, fontSize: 14, lineHeight: 1.5 }}>
-            מלא את פרטי המערכת או המודל שלהלן כדי לקבל דוח משילות (Governance Mapping), סיווג רמת סיכון וקביעת מנגנוני פיקוח נדרשים.
+           טופס זה מיועד להערכת סוכנים חכמים (AI Agents) ולקבלת אישור הפעלה מסודר בארגון. 
+           יש למלא את פרטי הסוכן. לאחר השלמת הטופס יופק כרטיס משילות וסיכונים לצורך בחינת הסיכון ואישור הפעלת הסוכן בארגון על ידי ה-CISO או צוות אבטחת המידע. בסיום המילוי יש להזין את כתובת המייל של הגורם הרלוונטי אליו יישלח הכרטיס.
           </p>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ fontSize: 14, fontWeight: 600, color: theme.textMain }}>שם מערכת ה-AI / המודל הנבדק:</label>
+          <label style={{ fontSize: 14, fontWeight: 600, color: theme.textMain }}>שם מערכת ה-AI / הסוכן הנבדק:</label>
           <input
             placeholder="לדוגמה: מערכת תמלול פניות לקוחות, בוט פיתוח פנימי וכדומה..."
             value={agentName}
@@ -219,7 +220,23 @@ export default function AgentForm() {
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              {q.options.map((opt) => {
+              {((q.type || "").toLowerCase().trim() === "text") ? (
+                <input
+                 type="text"
+                 value={answers[q.question_id] || ""}
+                 onChange={(e) =>
+                  handleChange(q.question_id, e.target.value)
+                 }
+                 style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  borderRadius: 10,
+                  border: `1px solid ${theme.border}`,
+                  fontSize: 13,
+                }}
+              />
+            ) :      
+              q.options?.map((opt) => {
                 const isSelected = answers[q.question_id] === opt.option_id;
                 return (
                   <label key={opt.option_id} style={{ 
@@ -266,7 +283,7 @@ export default function AgentForm() {
       {/* רשימת מערכות שמורות בארגון - פריסה רוחבית מתרחבת */}
       <div style={{ marginBottom: 40 }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: theme.textMain, marginBottom: 16 }}>
-          מערכות ומודלים ממופים במאגר הארגוני ({agents.length})
+          הסוכנים שלך במאגר  ({agents.length})
         </h3>
 
         {agents.length === 0 ? (

@@ -32,12 +32,12 @@ export default function Page() {
     }}>
       <div style={{ width: "100%", display: "grid", gap: "40px" }}>
         <section style={cardStyle}>
-          <h2 style={titleStyle}>Agent Tagging</h2>
+          <h2 style={titleStyle}>Agent Approval Management</h2>
           <AgentForm />
         </section>
 
         <section style={cardStyle}>
-          <h2 style={titleStyle}>Email Sender</h2>
+          <h2 style={titleStyle}>Send For Approval</h2>
           <WebhookSender />
         </section>
       </div>

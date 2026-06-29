@@ -117,11 +117,11 @@ export default function AgentEmailSender() {
         {/* כותרת והסבר פונקציונלי למנהל אבטחת מידע */}
         <div style={{ borderBottom: `1px solid ${theme.border}`, paddingBottom: 20, marginBottom: 24 }}>
           <h2 style={{ margin: "0 0 8px 0", color: theme.textMain, fontSize: 20, fontWeight: 700 }}>
-            שיתוף הערכת סוכנים לתאימות ומשילות (AI Governance)
+            שיתוף הערכת סוכנים לאישור (AI Governance)
           </h2>
           <p style={{ margin: 0, color: theme.textMuted, fontSize: 14, lineHeight: 1.5 }}>
-            מערכת זו מאפשרת לצוות אבטחת המידע וה-CISO למפות ולבקר מערכות AI בארגון. 
-            באפשרותך לשלוח את  ההערכה לעצמך, או להפיץ אותם ישירות למנהלי המוצר, מפתחים וגורמים רלוונטיים בארגון הנדרשים להשלים את פרטי ה-Governance והערכת הסיכונים, ולהחזירם אליכם לבחינה ואישור.
+            מערכת זו מאפשרת לצוות אבטחת המידע וה-CISO למפות ולאשר מערכות AI בארגון. 
+            באפשרותך לשלוח את ההערכה לעובדים המעורבים במשילות או בפיתוח הסוכן, או להפיץ אותה ישירות לגורמי אבטחת המידע לצורך קבלת אישור להפעלת הסוכן ושימושו בארגון.
           </p>
         </div>
 
@@ -154,7 +154,7 @@ export default function AgentEmailSender() {
         {/* רשימת המודלים / סוכנים לבחירה */}
         <div style={{ marginBottom: 24 }}>
           <label style={{ display: "inline-block", fontSize: 14, fontWeight: 600, color: theme.textMain, marginBottom: 12 }}>
-            בחר את מערכות ה-AI או השאלונים להצמדה ושליחה:
+            בחר את הסוכנים להצמדה ושליחה:
           </label>
           
           {agents.length === 0 ? (

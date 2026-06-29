@@ -31,10 +31,8 @@ export type AgentCard = {
   governance: {
     agentOwner: string;
     technicalOwner: string;
-    accountableOwner: string;
     changeApprover: string;
     oversightMechanism: string;
-    oversightOwner: string;
   };
 
   riskScenarios: string[];
@@ -120,12 +118,10 @@ export function createAgentCard(params: {
     },
 
     governance: {
-      agentOwner: "",
-      technicalOwner: "",
-      accountableOwner: "",
-      changeApprover: "",
-      oversightMechanism: "",
-      oversightOwner: "",
+      agentOwner: answers["gov_owner"] || "",
+      technicalOwner: answers["gov_tech"] || "",
+      changeApprover: answers["gov_approver"] || "",
+      oversightMechanism: answers["gov_monitoring"] || "",
     },
 
     riskScenarios,
