@@ -1,4 +1,3 @@
-````md
 # AI Governance & Agent Risk Assessment Platform
 
 ## Overview
@@ -110,6 +109,10 @@ Emails include:
 
 - Browser Local Storage
 
+### Hosting
+
+- Render
+
 ---
 
 ## Project Structure
@@ -176,6 +179,30 @@ http://localhost:3000
 
 ---
 
+## Deployment & Hosting (Render)
+
+### TL;DR — How this connects to Render
+
+**GitHub repo → linked in the Render Dashboard → Render builds & hosts the live site.**
+
+There is no Render config inside this codebase. Render watches this repository; when code is pushed, it runs `npm run build` and `npm start`, then serves the app on the public Render URL. Secrets like `RESEND_API_KEY` live in the Render Web Service settings, not in the repo.
+
+---
+
+### How it works (CI/CD Pipeline)
+
+The connection to Render is managed entirely at the infrastructure level rather than within the application's source code. The integration works through a direct connection between the Render Dashboard and this GitHub repository.
+
+1. **Continuous Integration (Auto-Deploy):** Render is configured to listen for new commits pushed to the repository.
+2. **Build Process:** Whenever new code is pushed, Render automatically pulls the latest version and runs the standard Next.js build commands defined in our `package.json` (`npm run build` followed by `npm start`).
+3. **Live Environment:** The newly built Next.js application is then deployed and served via the public Render URL.
+
+### Technical Note (Architecture Verification)
+
+Based on an architectural code review, it is verified that this repository is environment-agnostic. There are no hardcoded Render configurations, such as a `render.yaml` file, `Dockerfile`, or Render-specific API hooks within the codebase itself. All deployment settings, environment variables (like `RESEND_API_KEY`), and auto-deploy triggers are configured externally in the Render Web Service Dashboard.
+
+---
+
 ## Usage
 
 1. Create a new AI system assessment.
@@ -216,4 +243,3 @@ Contact:
 ## License
 
 This project is intended for internal governance, risk assessment, and AI inventory management purposes.
-````
