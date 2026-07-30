@@ -1,6 +1,9 @@
 /**
  * Mongoose model for an AI Agent assessment request stored in MongoDB.
  *
+ * Database: agentRequestDB (set via MONGODB_URI)
+ * Collection: agent_requests (explicitly configured below)
+ *
  * Combines questionnaire / AgentCard assessment fields with workflow metadata
  * (`status`, `assignedTo`). Timestamps (`createdAt`, `updatedAt`) are enabled.
  *
@@ -66,7 +69,10 @@ const agentRequestSchema = new Schema(
     /** Optional note from a reviewer on approve / reject / route. */
     reviewNotes: { type: String, default: "" },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    collection: "agent_requests",
+  },
 );
 
 /** Document shape inferred from the schema, plus Mongo `_id`. */

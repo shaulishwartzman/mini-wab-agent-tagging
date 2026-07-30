@@ -1,8 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { getAgents } from "@/lib/storage/agentsStorage";
+/**
+ * Email sender component for sharing agent assessments.
+ *
+ * Fetches agent list from MongoDB via /api/requests and allows sending
+ * selected assessments via email to stakeholders.
+ */
 
+import { useState, useEffect, useCallback } from "react";
+import {
+  fetchRequests,
+  type AgentRequestResponse,
+} from "@/lib/api/requests";
+
+/** UI-friendly agent shape for email selection. */
 type AgentCard = {
   id: string;
   agentName: string;
@@ -15,35 +26,43 @@ type AgentCard = {
   };
 };
 
+/** Map API response to UI card shape. */
+function toAgentCard(res: AgentRequestResponse): AgentCard {
+  return {
+    id: res._id,
+    agentName: res.agentName,
+    agentLevel: res.agentLevel,
+    classification: res.classification,
+  };
+}
+
 export default function AgentEmailSender() {
   const [email, setEmail] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [status, setStatus] = useState<{ type: "success" | "error" | null; message: string }>({
+  const [status, setStatus] = useState<{
+    type: "success" | "error" | null;
+    message: string;
+  }>({
     type: null,
     message: "",
   });
 
-  // אתחול ישיר וסינכרוני של ה-State - פותר את ה-Cascading Renders בטעינה הראשונית
-  const [agents, setAgents] = useState<AgentCard[]>(() => {
-    if (typeof window !== "undefined") {
-      return (getAgents() || []) as AgentCard[];
-    }
-    return [];
-  });
+  const [agents, setAgents] = useState<AgentCard[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // פונקציית רענון הנתונים מה-Storage בעת קבלת אירוע
-  const refreshAgents = () => {
-    setAgents((getAgents() || []) as AgentCard[]);
-  };
+  /** Load agents from MongoDB on mount. */
+  const loadAgents = useCallback(async () => {
+    setLoading(true);
+    const res = await fetchRequests();
+    if (res.success && res.requests) {
+      setAgents(res.requests.map(toAgentCard));
+    }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    // מאזין לאירוע עדכון מהטופס - מתעדכן בזמן אמת ללא ריפרש!
-    // הסרנו מכאן את הקריאה הסינכרונית ל-refreshAgents() כדי לפתור את השגיאה
-    window.addEventListener("agentsUpdated", refreshAgents);
-    return () => {
-      window.removeEventListener("agentsUpdated", refreshAgents);
-    };
-  }, []);
+    loadAgents();
+  }, [loadAgents]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) =>
@@ -57,7 +76,10 @@ export default function AgentEmailSender() {
       return;
     }
     if (selected.length === 0) {
-      setStatus({ type: "error", message: "נא לבחור לפחות מערכת/מודל אחד מהרשימה" });
+      setStatus({
+        type: "error",
+        message: "נא לבחור לפחות מערכת/מודל אחד מהרשימה",
+      });
       return;
     }
 
@@ -82,9 +104,12 @@ export default function AgentEmailSender() {
         setEmail("");
         setSelected([]);
       } else {
-        setStatus({ type: "error", message: "שגיאה בשליחת המייל. נא לנסות שנית." });
+        setStatus({
+          type: "error",
+          message: "שגיאה בשליחת המייל. נא לנסות שנית.",
+        });
       }
-    } catch (error) {
+    } catch {
       setStatus({ type: "error", message: "חיבור השרת נכשל." });
     }
   };
@@ -101,33 +126,66 @@ export default function AgentEmailSender() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 40 }} dir="rtl">
-      <div style={{ 
-        width: "100%", 
-        maxWidth: 900, 
-        margin: "0 auto", 
-        padding: 30, 
-        backgroundColor: theme.cardBg, 
-        border: `1px solid ${theme.border}`, 
-        borderRadius: 16, 
-        boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-        boxSizing: "border-box"
-      }}>
-        
-        {/* כותרת והסבר פונקציונלי למנהל אבטחת מידע */}
-        <div style={{ borderBottom: `1px solid ${theme.border}`, paddingBottom: 20, marginBottom: 24 }}>
-          <h2 style={{ margin: "0 0 8px 0", color: theme.textMain, fontSize: 20, fontWeight: 700 }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 40 }}
+      dir="rtl"
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 900,
+          margin: "0 auto",
+          padding: 30,
+          backgroundColor: theme.cardBg,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 16,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            borderBottom: `1px solid ${theme.border}`,
+            paddingBottom: 20,
+            marginBottom: 24,
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 8px 0",
+              color: theme.textMain,
+              fontSize: 20,
+              fontWeight: 700,
+            }}
+          >
             שיתוף הערכת סוכנים לאישור (AI Governance)
           </h2>
-          <p style={{ margin: 0, color: theme.textMuted, fontSize: 14, lineHeight: 1.5 }}>
-            מערכת זו מאפשרת לצוות אבטחת המידע וה-CISO למפות ולאשר מערכות AI בארגון. 
-            באפשרותך לשלוח את ההערכה לעובדים המעורבים במשילות או בפיתוח הסוכן, או להפיץ אותה ישירות לגורמי אבטחת המידע לצורך קבלת אישור להפעלת הסוכן ושימושו בארגון.
+          <p
+            style={{
+              margin: 0,
+              color: theme.textMuted,
+              fontSize: 14,
+              lineHeight: 1.5,
+            }}
+          >
+            מערכת זו מאפשרת לצוות אבטחת המידע וה-CISO למפות ולאשר מערכות AI
+            בארגון. באפשרותך לשלוח את ההערכה לעובדים המעורבים במשילות או בפיתוח
+            הסוכן, או להפיץ אותה ישירות לגורמי אבטחת המידע לצורך קבלת אישור
+            להפעלת הסוכן ושימושו בארגון.
           </p>
         </div>
 
-        {/* הזנת אימייל נמען */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
-          <label style={{ fontSize: 14, fontWeight: 600, color: theme.textMain }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginBottom: 24,
+          }}
+        >
+          <label
+            style={{ fontSize: 14, fontWeight: 600, color: theme.textMain }}
+          >
             כתובת אימייל של הנמען בארגון:
           </label>
           <input
@@ -146,45 +204,105 @@ export default function AgentEmailSender() {
               boxSizing: "border-box",
               direction: "ltr",
               textAlign: "left",
-              color: theme.textMain
+              color: theme.textMain,
             }}
           />
         </div>
 
-        {/* רשימת המודלים / סוכנים לבחירה */}
         <div style={{ marginBottom: 24 }}>
-          <label style={{ display: "inline-block", fontSize: 14, fontWeight: 600, color: theme.textMain, marginBottom: 12 }}>
+          <label
+            style={{
+              display: "inline-block",
+              fontSize: 14,
+              fontWeight: 600,
+              color: theme.textMain,
+              marginBottom: 12,
+            }}
+          >
             בחר את הסוכנים להצמדה ושליחה:
           </label>
-          
-          {agents.length === 0 ? (
-            <p style={{ color: theme.textMuted, fontStyle: "italic", textAlign: "center", padding: 20, backgroundColor: "#f8fafc", borderRadius: 8, border: `1px solid ${theme.border}`, fontSize: 14 }}>
+
+          {loading ? (
+            <p
+              style={{
+                color: theme.textMuted,
+                textAlign: "center",
+                padding: 20,
+                backgroundColor: "#f8fafc",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                fontSize: 14,
+              }}
+            >
+              טוען...
+            </p>
+          ) : agents.length === 0 ? (
+            <p
+              style={{
+                color: theme.textMuted,
+                fontStyle: "italic",
+                textAlign: "center",
+                padding: 20,
+                backgroundColor: "#f8fafc",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                fontSize: 14,
+              }}
+            >
               לא נמצאו מערכות רשומות במאגר כרגע.
             </p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: 12,
+              }}
+            >
               {agents.map((a) => {
                 const isChecked = selected.includes(a.id);
                 return (
-                  <label key={a.id} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: 16,
-                    borderRadius: 12,
-                    border: isChecked ? `2px solid ${theme.primary}` : `1px solid ${theme.border}`,
-                    backgroundColor: isChecked ? "#eff6ff" : theme.cardBg,
-                    cursor: "pointer",
-                    transition: "all 0.2s ease"
-                  }}>
+                  <label
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: 16,
+                      borderRadius: 12,
+                      border: isChecked
+                        ? `2px solid ${theme.primary}`
+                        : `1px solid ${theme.border}`,
+                      backgroundColor: isChecked ? "#eff6ff" : theme.cardBg,
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={isChecked}
                       onChange={() => toggleSelect(a.id)}
-                      style={{ cursor: "pointer", accentColor: theme.primary, width: 16, height: 16 }}
+                      style={{
+                        cursor: "pointer",
+                        accentColor: theme.primary,
+                        width: 16,
+                        height: 16,
+                      }}
                     />
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: theme.textMain }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: theme.textMain,
+                        }}
+                      >
                         {a.agentName || "מערכת ללא שם"}
                       </span>
                       <span style={{ fontSize: 12, color: theme.textMuted }}>
@@ -199,39 +317,95 @@ export default function AgentEmailSender() {
         </div>
 
         {status.type && (
-          <div style={{ padding: 12, borderRadius: 8, fontSize: 14, fontWeight: 500, marginBottom: 16, border: "1px solid", backgroundColor: status.type === "success" ? "#f0fdf4" : "#fef2f2", borderColor: status.type === "success" ? "#bbf7d0" : "#fca5a5", color: status.type === "success" ? theme.success : theme.danger }}>
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+              marginBottom: 16,
+              border: "1px solid",
+              backgroundColor:
+                status.type === "success" ? "#f0fdf4" : "#fef2f2",
+              borderColor: status.type === "success" ? "#bbf7d0" : "#fca5a5",
+              color: status.type === "success" ? theme.success : theme.danger,
+            }}
+          >
             {status.message}
           </div>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-start" }}>
-          <button onClick={handleSend} style={{ backgroundColor: theme.primary, color: "#fff", border: "none", padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
-            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = theme.primaryHover)}
-            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = theme.primary)}
+          <button
+            onClick={handleSend}
+            style={{
+              backgroundColor: theme.primary,
+              color: "#fff",
+              border: "none",
+              padding: "12px 24px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.backgroundColor = theme.primaryHover)
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.backgroundColor = theme.primary)
+            }
           >
             שלח שאלון משילות במייל
           </button>
         </div>
       </div>
 
-      {/* פוטר (Footer) קבוע ומעודכן לחלוטין בתחתית העמוד */}
-      <footer style={{
-        backgroundColor: "#0f172a",
-        color: "#94a3b8",
-        padding: "24px 20px",
-        textAlign: "center",
-        fontSize: 13,
-        lineHeight: 1.6,
-        width: "100%"
-      }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+      <footer
+        style={{
+          backgroundColor: "#0f172a",
+          color: "#94a3b8",
+          padding: "24px 20px",
+          textAlign: "center",
+          fontSize: 13,
+          lineHeight: 1.6,
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 900,
+            margin: "0 auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
           <div style={{ color: "#ffffff", fontWeight: 700, fontSize: 14 }}>
-            נבנה על ידי <span style={{ color: "#38bdf8" }}>LEEH</span> &copy; {new Date().getFullYear()}
+            נבנה על ידי <span style={{ color: "#38bdf8" }}>LEEH</span> &copy;{" "}
+            {new Date().getFullYear()}
           </div>
-          <div style={{ display: "flex", gap: 12, marginTop: 4, flexWrap: "wrap", justifyContent: "center" }}>
-            <span>ליצירת קשר ותמיכה: <strong>Shauli Shwartzman</strong></span>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              marginTop: 4,
+              flexWrap: "wrap",
+              justifyContent: "center",
+            }}
+          >
+            <span>
+              ליצירת קשר ותמיכה: <strong>Shauli Shwartzman</strong>
+            </span>
             <span>|</span>
-            <span><a href="mailto:shauli.sh321@gmail.com" style={{ color: "#38bdf8", textDecoration: "none" }}>shauli.sh321@gmail.com</a></span>
+            <span>
+              <a
+                href="mailto:shauli.sh321@gmail.com"
+                style={{ color: "#38bdf8", textDecoration: "none" }}
+              >
+                shauli.sh321@gmail.com
+              </a>
+            </span>
           </div>
         </div>
       </footer>

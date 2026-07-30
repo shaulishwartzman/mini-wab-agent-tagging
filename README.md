@@ -61,7 +61,7 @@ Examples include:
 
 ### Agent Inventory Repository
 
-Stores assessed AI systems in the browser (localStorage) for the current UI, and supports server-side persistence of approval requests in MongoDB via `/api/requests`.
+Stores assessed AI systems in MongoDB Atlas via `/api/requests`. The UI fetches and persists all agent assessments through the API — no localStorage dependency.
 
 ---
 
@@ -113,8 +113,9 @@ Emails include:
 
 ### Storage
 
-- Browser Local Storage (current agent inventory UI)
 - MongoDB Atlas + Mongoose (`AgentRequest` via `/api/requests`)
+- Database: `agentRequestDB`
+- Collection: `agent_requests`
 
 ### Hosting
 
@@ -134,30 +135,31 @@ app/
    ├─ requests/
    │  ├─ route.ts              # POST create, GET list/filter
    │  └─ [id]/
-   │     └─ route.ts           # PATCH/PUT status transitions
+   │     └─ route.ts           # PATCH/PUT/DELETE status transitions
    └─ send-email/
       └─ route.ts
 
 components/
-├─ AgentForm.tsx
-├─ AgentEmailSender.tsx
+├─ AgentForm.tsx               # Assessment form (saves to MongoDB)
+├─ AgentEmailSender.tsx        # Email sharing (reads from MongoDB)
 └─ questionnaire/
    └─ fields.ts
 
 lib/
 ├─ agent-engine/
 │  └─ createAgentCard.ts       # Build AgentCard from questionnaire answers
+├─ api/
+│  └─ requests.ts              # Client-side API helpers (createRequest, fetchRequests)
 ├─ db/
 │  └─ mongodb.ts               # connectDB() — cached Mongoose connection
 ├─ requests/
 │  └─ transitions.ts           # Legal status transition rules
-├─ storage/
-│  └─ agentsStorage.ts         # Browser localStorage helpers
 └─ types.ts                    # RequestStatus, UserRole, RequestAction, payloads
 
 models/
-└─ AgentRequest.ts             # Mongoose schema for assessment requests
+└─ AgentRequest.ts             # Mongoose schema (collection: agent_requests)
 
+.env.example                   # placeholder env vars (safe to commit)
 .env.local                     # local secrets (not committed)
 ```
 
@@ -165,7 +167,7 @@ models/
 
 ## Request Lifecycle API
 
-Server-side persistence for AI agent assessment requests. The questionnaire UI still uses localStorage; these endpoints are the MongoDB-backed approval workflow.
+Server-side persistence for AI agent assessment requests. The questionnaire UI saves directly to MongoDB via these endpoints.
 
 ### Modules
 
@@ -173,10 +175,11 @@ Server-side persistence for AI agent assessment requests. The questionnaire UI s
 | --- | --- |
 | `lib/types.ts` | Shared enums: `RequestStatus`, `UserRole`, `RequestAction`, plus `AgentAssessmentPayload` |
 | `lib/db/mongodb.ts` | `connectDB()` — connects using `MONGODB_URI`, caches for Next.js hot reload |
-| `models/AgentRequest.ts` | Mongoose model (assessment fields + `status` / `assignedTo` + timestamps) |
+| `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()` |
+| `models/AgentRequest.ts` | Mongoose model (collection: `agent_requests`) |
 | `lib/requests/transitions.ts` | `applyTransition()` — CISO-first state machine; rejects illegal moves |
 | `app/api/requests/route.ts` | Collection: create + list |
-| `app/api/requests/[id]/route.ts` | Item: approve / reject / route |
+| `app/api/requests/[id]/route.ts` | Item: approve / reject / route / delete |
 
 ### Status workflow (CISO-first)
 
@@ -264,27 +267,66 @@ npm install
 
 ### Environment variables
 
-Create a **`.env.local`** file in the project root. Next.js loads this automatically; files like `atlas-credentials.env` are **not** read by the app.
+1. Copy `.env.example` to `.env.local` in the project root.
+2. Fill in real credentials. Next.js loads `.env.local` automatically; files like `atlas-credentials.env` are **not** read by the app.
 
 ```env
+# MongoDB Atlas — required for DB connection
+# Database name must be agentRequestDB (collection: agent_requests)
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/agentRequestDB?retryWrites=true&w=majority
+
 # Email (optional for local UI work; required to send assessments)
 RESEND_API_KEY=your_resend_api_key
-
-# MongoDB Atlas — required for server-side DB connection (lib/db/mongodb.ts)
-MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?retryWrites=true&w=majority
 ```
 
 | Variable | Required for | Notes |
 | --- | --- | --- |
-| `MONGODB_URI` | MongoDB connection via `connectDB()` | From MongoDB Atlas (Database → Connect). Include a database name in the path. |
+| `MONGODB_URI` | MongoDB connection via `connectDB()` | From MongoDB Atlas (Database → Connect). **Must include `/agentRequestDB`** in the path. |
 | `RESEND_API_KEY` | `/api/send-email` | From the Resend dashboard. |
+
+> **Note:** System databases `admin` and `local` are reserved — app data goes only in `agentRequestDB`.
 
 **MongoDB Atlas checklist (students):**
 
 1. Create a free Atlas cluster and a database user.
-2. Copy the connection string into `.env.local` as `MONGODB_URI`.
+2. Copy the connection string into `.env.local` as `MONGODB_URI` (include `/agentRequestDB` in the path).
 3. In Atlas → **Network Access**, allow your current IP (or `0.0.0.0/0` for temporary school/dev use).
 4. Never commit `.env.local` or credential dumps (e.g. `atlas-credentials.env`) — they are gitignored.
+
+---
+
+### Granting Atlas Access to Teammates
+
+To give a teammate (e.g. your boss or colleague) full admin access to the database:
+
+1. **Database Access** (Atlas left menu) → **Add New Database User**
+   - Choose **Password** authentication
+   - Create a username + strong password
+   - Under **Database User Privileges**, select **Atlas admin** (or appropriate role)
+   - Save
+
+2. **Network Access** → **Add IP Address**
+   - Add the teammate's IP (or `0.0.0.0/0` temporarily for school/dev)
+
+3. **Share credentials privately** (Slack / email — **never** in Git / README):
+   - Username
+   - Password
+   - Connection string (`MONGODB_URI`) with their username/password filled in
+   - Link to the Atlas project
+
+> **Important:** Git branch access (GitHub) is separate from MongoDB Atlas access. A teammate needs both: Git clone/branch access **and** Atlas credentials to work on the project locally.
+
+---
+
+### Verifying Database Connection
+
+After setting up `.env.local`:
+
+1. Run `npm run dev`
+2. Fill out the assessment form and click **"שמור בקשה"**
+3. Confirm success message in the UI
+4. Open Atlas → **Browse Collections** → `agentRequestDB` → `agent_requests` → see your document
+5. Or verify via API: `GET http://localhost:3000/api/requests`
 
 Run the application:
 
@@ -341,7 +383,6 @@ Based on an architectural code review, it is verified that this repository is en
 - Excel reporting
 - Risk scoring engine
 - Governance workflow approvals
-- Wire questionnaire UI to `/api/requests` (replace localStorage for approvals)
 - User authentication
 - Multi-tenant support
 - Audit trail and versioning

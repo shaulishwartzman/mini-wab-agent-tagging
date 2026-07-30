@@ -47,9 +47,25 @@ export const RequestAction = {
 export type RequestAction =
   (typeof RequestAction)[keyof typeof RequestAction];
 
+/** Reusable nested type for classification codes. */
+export type Classification = {
+  autonomy: string;
+  brain: string;
+  capability: string;
+  management: string;
+};
+
+/** Reusable nested type for governance ownership fields. */
+export type Governance = {
+  agentOwner: string;
+  technicalOwner: string;
+  changeApprover: string;
+  oversightMechanism: string;
+};
+
 /**
  * Assessment payload aligned with `createAgentCard` / AgentCard.
- * Sent on `POST /api/requests` (fields beyond `agentName` are optional for flexibility).
+ * Sent on `POST /api/requests` (fields beyond `agentName` are optional).
  */
 export type AgentAssessmentPayload = {
   /** Display name of the AI agent / system being assessed. */
@@ -57,23 +73,34 @@ export type AgentAssessmentPayload = {
   /** Raw questionnaire answers keyed by question_id. */
   answers?: Record<string, string>;
   /** Classification codes (A# / B# / C# / M#). */
-  classification?: {
-    autonomy: string;
-    brain: string;
-    capability: string;
-    management: string;
-  };
+  classification?: Classification;
   /** Composite level string, e.g. `A2-B1-C2-M1`. */
   agentLevel?: string;
   /** Human-readable labels for each classification dimension. */
   classificationExplanation?: Record<string, string>;
   /** Ownership and oversight fields from the governance section. */
-  governance?: {
-    agentOwner: string;
-    technicalOwner: string;
-    changeApprover: string;
-    oversightMechanism: string;
-  };
+  governance?: Governance;
   /** Risk scenario strings derived from classification options. */
   riskScenarios?: string[];
+};
+
+/**
+ * Full agent request document shape returned from API / MongoDB.
+ * Extends AgentAssessmentPayload with workflow metadata and timestamps.
+ */
+export type AgentRequestResponse = {
+  _id: string;
+  agentName: string;
+  answers: Record<string, string>;
+  classification: Classification;
+  agentLevel: string;
+  classificationExplanation: Record<string, string>;
+  governance: Governance;
+  riskScenarios: string[];
+  status: RequestStatus;
+  assignedTo: UserRole | null;
+  submittedByRole: UserRole;
+  reviewNotes: string;
+  createdAt: string;
+  updatedAt: string;
 };

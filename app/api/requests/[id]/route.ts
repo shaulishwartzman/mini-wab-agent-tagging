@@ -1,10 +1,11 @@
 /**
  * Item API for a single AI Agent assessment request.
  *
- * - `PATCH /api/requests/:id` — apply a workflow action (primary)
- * - `PUT   /api/requests/:id` — same behavior as PATCH
+ * - `PATCH  /api/requests/:id` — apply a workflow action (primary)
+ * - `PUT    /api/requests/:id` — same behavior as PATCH
+ * - `DELETE /api/requests/:id` — remove a request by ID
  *
- * Body: `{ action: "APPROVE" | "REJECT" | "ROUTE_TO_MANAGER", reviewNotes?: string }`
+ * PATCH/PUT Body: `{ action: "APPROVE" | "REJECT" | "ROUTE_TO_MANAGER", reviewNotes?: string }`
  * Illegal transitions are rejected with HTTP 400 (enforced by `applyTransition`).
  */
 
@@ -100,4 +101,33 @@ export async function PATCH(req: Request, context: RouteContext) {
  */
 export async function PUT(req: Request, context: RouteContext) {
   return updateRequestStatus(req, context);
+}
+
+/**
+ * Delete a request by ID.
+ *
+ * @returns `{ success: true }` or 404 / 500 error payload
+ */
+export async function DELETE(_req: Request, context: RouteContext) {
+  try {
+    const { id } = await context.params;
+
+    await connectDB();
+
+    const deleted = await AgentRequest.findByIdAndDelete(id);
+
+    if (!deleted) {
+      return NextResponse.json(
+        { success: false, error: "Request not found" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 },
+    );
+  }
 }
