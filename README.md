@@ -151,24 +151,116 @@ Server-side persistence for AI agent assessment requests. The questionnaire UI s
 | `lib/db/mongodb.ts` | `connectDB()` — connects using `MONGODB_URI`, caches for Next.js hot reload |
 | `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()` |
 | `models/AgentRequest.ts` | Mongoose model (collection: `agent_requests`) |
-| `lib/requests/transitions.ts` | `applyTransition()` — CISO-first state machine; rejects illegal moves |
+| `lib/requests/transitions.ts` | `applyTransition()` — CISO-final state machine; rejects illegal moves |
 | `app/api/requests/route.ts` | Collection: create + list |
 | `app/api/requests/[id]/route.ts` | Item: approve / reject / route / delete |
 
-### Status workflow (CISO-first)
+### Status Workflow (CISO-Final)
 
-```text
-POST create  →  PENDING_CISO  (assignedTo: CISO)
-             →  AUTO_APPROVED (if autoApprove: true; no assignee)
+CISO is the **final decision-maker**. Managers provide **recommendations only** and cannot approve or reject directly.
 
-PENDING_CISO + APPROVE          → APPROVED
-PENDING_CISO + REJECT           → REJECTED
-PENDING_CISO + ROUTE_TO_MANAGER → PENDING_MANAGER (assignedTo: MANAGER)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      EMPLOYEE SUBMITS                           │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+                   ┌──────────┴──────────┐
+                   ↓                     ↓
+            Green-path criteria      Not green-path
+              ALL met?                   
+                   ↓                     ↓
+            AUTO_APPROVED           PENDING_CISO
+              (terminal)           assignedTo: CISO
+                                        ↓
+                         ┌──────────────┼──────────────┐
+                         ↓              ↓              ↓
+                      APPROVE        REJECT     ROUTE_TO_MANAGER
+                         ↓              ↓              ↓
+                     APPROVED       REJECTED     PENDING_MANAGER
+                     (terminal)     (terminal)   assignedTo: MANAGER
+                                                       ↓
+                                          ┌────────────┴────────────┐
+                                          ↓                         ↓
+                                  RECOMMEND_APPROVE          RECOMMEND_REJECT
+                                          ↓                         ↓
+                                          └────────────┬────────────┘
+                                                       ↓
+                                               PENDING_CISO
+                                            (with manager input)
+                                            assignedTo: CISO
+                                                       ↓
+                                          ┌────────────┴────────────┐
+                                          ↓                         ↓
+                                       APPROVE                   REJECT
+                                          ↓                         ↓
+                                      APPROVED                  REJECTED
+                                      (terminal)                (terminal)
+```
 
-PENDING_MANAGER + APPROVE → APPROVED
-PENDING_MANAGER + REJECT  → REJECTED
+#### State Transitions
 
-APPROVED / REJECTED / AUTO_APPROVED → terminal (no further actions)
+| Current Status | Action | Next Status | assignedTo |
+| --- | --- | --- | --- |
+| (create) | — | PENDING_CISO | CISO |
+| (create + autoApprove) | — | AUTO_APPROVED | null |
+| PENDING_CISO | APPROVE | APPROVED | null |
+| PENDING_CISO | REJECT | REJECTED | null |
+| PENDING_CISO | ROUTE_TO_MANAGER | PENDING_MANAGER | MANAGER |
+| PENDING_MANAGER | RECOMMEND_APPROVE | PENDING_CISO | CISO |
+| PENDING_MANAGER | RECOMMEND_REJECT | PENDING_CISO | CISO |
+| APPROVED / REJECTED / AUTO_APPROVED | any | error | — |
+
+#### Business Rules
+
+- **CISO is always final** — Only CISO can set APPROVED or REJECTED status
+- **Manager is advisory** — Manager provides recommendations, not decisions
+- **Routing is optional** — CISO routes to manager ad-hoc, not mandatory
+- **Auto-approval is criteria-based** — Green-path uses closed fields only (read-only, human-in-the-loop, etc.)
+- **Free text doesn't block auto-approval** — `agentPurpose` is for audit/context, not approval logic
+- **Terminal = no assignee** — When APPROVED/REJECTED/AUTO_APPROVED, `assignedTo = null`
+
+#### Schema Fields
+
+**Workflow Fields:**
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `status` | Enum | PENDING_CISO, PENDING_MANAGER, AUTO_APPROVED, APPROVED, REJECTED |
+| `assignedTo` | Enum / null | Which role's inbox (CISO, MANAGER, or null for terminal) |
+| `assignedToUserId` | String / null | Specific user ID when routed to a manager |
+| `submittedByRole` | Enum | EMPLOYEE, MANAGER, CISO |
+| `submittedByUserId` | String | User ID (email) of who submitted |
+| `reviewNotes` | String | Current reviewer's notes |
+
+**Audit Trail Fields:**
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `approvedBy` | String / null | Who made final decision: `SYSTEM_AUTO_APPROVAL` or user ID |
+| `resolvedAt` | Date / null | When request reached terminal status |
+| `managerRecommendation` | Enum / null | `RECOMMEND_APPROVE` or `RECOMMEND_REJECT` |
+| `routingHistory` | Array | Full routing chain for audit (see below) |
+
+**Auto-Approval Fields:**
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `autoApprovalEligible` | Boolean | Did request meet green-path criteria? |
+| `autoApprovalReason` | String / null | Why auto-approved or why not eligible |
+| `agentPurpose` | String | Free text description (for CISO context, not auto-approval) |
+
+**Routing History Entry:**
+
+```typescript
+{
+  from: string;        // User ID (e.g., "ciso@company.com")
+  fromRole: UserRole;  // "CISO" or "MANAGER"
+  to: string;          // User ID or "terminal"
+  toRole: UserRole;    
+  action: string;      // "ROUTE_TO_MANAGER", "RECOMMEND_APPROVE", etc.
+  notes: string;       // Context/reason for the action
+  at: Date;            // Timestamp
+}
 ```
 
 ### Endpoints
@@ -183,7 +275,7 @@ curl -X POST http://localhost:3000/api/requests \
   -d "{\"agentName\":\"Ops Assistant\",\"agentLevel\":\"A2-B1-C1-M1\"}"
 ```
 
-Optional body fields: `answers`, `classification`, `agentLevel`, `classificationExplanation`, `governance`, `riskScenarios`, `submittedByRole`, `reviewNotes`, `autoApprove`.
+Optional body fields: `answers`, `classification`, `agentLevel`, `classificationExplanation`, `governance`, `riskScenarios`, `submittedByRole`, `reviewNotes`, `autoApprove`, `submittedByUserId`, `agentPurpose`, `autoApprovalEligible`, `autoApprovalReason`.
 
 Returns `201` + `{ success: true, request }`.
 
@@ -205,10 +297,17 @@ curl "http://localhost:3000/api/requests?assignedTo=CISO"
 Apply a workflow action. Body:
 
 ```json
-{ "action": "APPROVE", "reviewNotes": "Looks good" }
+{ "action": "APPROVE", "reviewNotes": "Looks good", "actorUserId": "ciso@company.com" }
 ```
 
-Allowed `action` values: `APPROVE`, `REJECT`, `ROUTE_TO_MANAGER`.
+**CISO actions:** `APPROVE`, `REJECT`, `ROUTE_TO_MANAGER`
+
+**Manager actions:** `RECOMMEND_APPROVE`, `RECOMMEND_REJECT`
+
+Additional fields:
+- `reviewNotes` — optional note from reviewer
+- `actorUserId` — who is performing this action (for audit trail)
+- `targetUserId` — for `ROUTE_TO_MANAGER`: which specific manager to assign
 
 | Status | Meaning |
 | --- | --- |
@@ -216,10 +315,20 @@ Allowed `action` values: `APPROVE`, `REJECT`, `ROUTE_TO_MANAGER`.
 | `400` | Invalid action or illegal transition (e.g. approving a `REJECTED` request) |
 | `404` | Unknown id |
 
+**Example: CISO routes to manager**
+
 ```bash
 curl -X PATCH http://localhost:3000/api/requests/<id> \
   -H "Content-Type: application/json" \
-  -d "{\"action\":\"ROUTE_TO_MANAGER\",\"reviewNotes\":\"Need business owner sign-off\"}"
+  -d "{\"action\":\"ROUTE_TO_MANAGER\",\"actorUserId\":\"ciso@company.com\",\"targetUserId\":\"manager@company.com\",\"reviewNotes\":\"Need business owner sign-off\"}"
+```
+
+**Example: Manager recommends approval**
+
+```bash
+curl -X PATCH http://localhost:3000/api/requests/<id> \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"RECOMMEND_APPROVE\",\"actorUserId\":\"manager@company.com\",\"reviewNotes\":\"Verified with legal, low risk\"}"
 ```
 
 ---
@@ -343,6 +452,59 @@ Based on an architectural code review, it is verified that this repository is en
 3. Generate an AI Governance Card.
 4. Review risk scenarios.
 5. Save the assessment to MongoDB (internal submit).
+
+---
+
+## MVP Testing Mode
+
+For the Minimum Viable Product (MVP), the platform includes a **Role Switcher** that allows testing the full approval workflow without requiring a real authentication system.
+
+### Why This Approach?
+
+- **No auth complexity** — Focus on validating the workflow logic first
+- **Instant role switching** — Test all workflow paths quickly
+- **Demo capability** — Show stakeholders the full flow in real-time
+- **Easy to replace** — Will be swapped for real auth in production
+
+### Test Users
+
+The role switcher (yellow banner at the top) provides three predefined test users:
+
+| Role | User ID | Capabilities |
+| --- | --- | --- |
+| **EMPLOYEE** | `employee@test.local` | Submit agent assessment requests |
+| **MANAGER** | `manager@test.local` | Provide recommendations when consulted by CISO |
+| **CISO** | `ciso@test.local` | Final decision-maker (approve, reject, route) |
+
+### Quick Test Scenarios
+
+#### Scenario 1: Direct CISO Approval
+
+1. Select **EMPLOYEE** role
+2. Fill out the assessment form and submit
+3. Switch to **CISO** role
+4. Find the request and click **Approve**
+
+#### Scenario 2: Manager Consultation Flow
+
+1. Select **EMPLOYEE** role → Submit a request
+2. Switch to **CISO** role → Click **Route to Manager**
+3. Switch to **MANAGER** role → Click **Recommend Approve** (or Reject)
+4. Switch to **CISO** role → Make final decision (Approve/Reject)
+
+### Files Involved
+
+| File | Purpose |
+| --- | --- |
+| `lib/test-users.ts` | Hardcoded test user definitions |
+| `contexts/RoleContext.tsx` | React context for current role state |
+| `components/RoleSwitcher.tsx` | Role selector dropdown UI |
+| `app/providers.tsx` | Client-side providers wrapper |
+| `lib/api/requests.ts` | API helpers including `applyAction()` |
+
+### Note
+
+> This role switcher is for **MVP/demo purposes only**. In production, it will be replaced with proper user authentication (e.g., OAuth, JWT sessions, or enterprise SSO).
 
 ---
 

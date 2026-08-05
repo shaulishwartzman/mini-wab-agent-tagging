@@ -42,6 +42,8 @@ function isRequestStatus(value: string): value is RequestStatusType {
  * Body must include at least `agentName`. Defaults to `PENDING_CISO` / `assignedTo: CISO`.
  * Pass `autoApprove: true` to create as `AUTO_APPROVED` with no assignee.
  *
+ * New fields: submittedByUserId, agentPurpose, autoApprovalEligible, autoApprovalReason
+ *
  * @returns `201` + `{ success, request }` or `400` / `500` error payload
  */
 export async function POST(req: Request) {
@@ -73,6 +75,12 @@ export async function POST(req: Request) {
         ? RequestStatus.AUTO_APPROVED
         : RequestStatus.PENDING_CISO,
       assignedTo: autoApprove ? null : UserRole.CISO,
+      submittedByUserId: body.submittedByUserId ?? "",
+      agentPurpose: body.agentPurpose ?? "",
+      autoApprovalEligible: body.autoApprovalEligible ?? false,
+      autoApprovalReason: body.autoApprovalReason ?? null,
+      approvedBy: autoApprove ? "SYSTEM_AUTO_APPROVAL" : null,
+      resolvedAt: autoApprove ? new Date() : null,
     });
 
     return NextResponse.json(

@@ -38,14 +38,44 @@ export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 /**
  * Allowed PATCH/PUT actions that drive status transitions.
  * Clients send an action; they do not write `status` directly.
+ *
+ * CISO actions: APPROVE, REJECT, ROUTE_TO_MANAGER
+ * Manager actions: RECOMMEND_APPROVE, RECOMMEND_REJECT (advisory only, returns to CISO)
  */
 export const RequestAction = {
   APPROVE: "APPROVE",
   REJECT: "REJECT",
   ROUTE_TO_MANAGER: "ROUTE_TO_MANAGER",
+  RECOMMEND_APPROVE: "RECOMMEND_APPROVE",
+  RECOMMEND_REJECT: "RECOMMEND_REJECT",
 } as const;
 export type RequestAction =
   (typeof RequestAction)[keyof typeof RequestAction];
+
+/**
+ * Manager recommendation values (subset of RequestAction for type safety).
+ * Managers provide recommendations, not final decisions.
+ */
+export const ManagerRecommendation = {
+  RECOMMEND_APPROVE: "RECOMMEND_APPROVE",
+  RECOMMEND_REJECT: "RECOMMEND_REJECT",
+} as const;
+export type ManagerRecommendation =
+  (typeof ManagerRecommendation)[keyof typeof ManagerRecommendation];
+
+/**
+ * Single entry in the routing history audit trail.
+ * Tracks who routed/recommended to whom and when.
+ */
+export type RoutingHistoryEntry = {
+  from: string;
+  fromRole: UserRole;
+  to: string;
+  toRole: UserRole;
+  action: RequestAction;
+  notes: string;
+  at: string;
+};
 
 /** Reusable nested type for classification codes. */
 export type Classification = {
@@ -96,6 +126,14 @@ export type AgentAssessmentPayload = {
   governance?: Governance;
   /** Risk scenario strings derived from classification options. */
   riskScenarios?: string[];
+  /** User ID (email) of who submitted. */
+  submittedByUserId?: string;
+  /** Free-text description of agent's purpose (for CISO context, not auto-approval). */
+  agentPurpose?: string;
+  /** Whether this request qualifies for green-path auto-approval. */
+  autoApprovalEligible?: boolean;
+  /** Reason for auto-approval eligibility or ineligibility. */
+  autoApprovalReason?: string;
 };
 
 /**
@@ -117,4 +155,13 @@ export type AgentRequestResponse = {
   reviewNotes: string;
   createdAt: string;
   updatedAt: string;
+  submittedByUserId: string;
+  assignedToUserId: string | null;
+  agentPurpose: string;
+  approvedBy: string | null;
+  resolvedAt: string | null;
+  autoApprovalEligible: boolean;
+  autoApprovalReason: string | null;
+  managerRecommendation: ManagerRecommendation | null;
+  routingHistory: RoutingHistoryEntry[];
 };

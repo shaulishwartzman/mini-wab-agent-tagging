@@ -11,7 +11,7 @@
  */
 
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { RequestStatus, UserRole } from "@/lib/types";
+import { RequestStatus, UserRole, ManagerRecommendation } from "@/lib/types";
 
 /** Nested classification codes (autonomy / brain / capability / management). */
 const classificationSchema = new Schema(
@@ -31,6 +31,20 @@ const governanceSchema = new Schema(
     technicalOwner: { type: String, default: "" },
     changeApprover: { type: String, default: "" },
     oversightMechanism: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
+/** Single entry in the routing history audit trail. */
+const routingHistoryEntrySchema = new Schema(
+  {
+    from: { type: String, required: true },
+    fromRole: { type: String, enum: Object.values(UserRole), required: true },
+    to: { type: String, required: true },
+    toRole: { type: String, enum: Object.values(UserRole), required: true },
+    action: { type: String, required: true },
+    notes: { type: String, default: "" },
+    at: { type: Date, default: Date.now },
   },
   { _id: false },
 );
@@ -68,6 +82,37 @@ const agentRequestSchema = new Schema(
     },
     /** Optional note from a reviewer on approve / reject / route. */
     reviewNotes: { type: String, default: "" },
+
+    /** User ID (email) of who submitted the request. */
+    submittedByUserId: { type: String, default: "" },
+
+    /** Specific user ID assigned (for manager routing). */
+    assignedToUserId: { type: String, default: null },
+
+    /** Free-text description of agent's purpose (for CISO context, not auto-approval). */
+    agentPurpose: { type: String, default: "" },
+
+    /** Who made the final decision: "SYSTEM_AUTO_APPROVAL" or user ID. */
+    approvedBy: { type: String, default: null },
+
+    /** When the request reached terminal status. */
+    resolvedAt: { type: Date, default: null },
+
+    /** Whether this request qualified for green-path auto-approval. */
+    autoApprovalEligible: { type: Boolean, default: false },
+
+    /** Reason for auto-approval eligibility or ineligibility. */
+    autoApprovalReason: { type: String, default: null },
+
+    /** Manager's recommendation (RECOMMEND_APPROVE or RECOMMEND_REJECT). */
+    managerRecommendation: {
+      type: String,
+      enum: [...Object.values(ManagerRecommendation), null],
+      default: null,
+    },
+
+    /** Full routing history for audit trail. */
+    routingHistory: { type: [routingHistoryEntrySchema], default: [] },
   },
   {
     timestamps: true,

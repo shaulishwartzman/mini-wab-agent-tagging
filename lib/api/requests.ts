@@ -3,11 +3,22 @@
  *
  * These functions wrap fetch calls to /api/requests for use in React
  * components. They handle JSON serialization and return typed responses.
+ *
+ * FUNCTIONS:
+ * - createRequest() - Create a new assessment request
+ * - fetchRequests() - List requests with optional filters
+ * - deleteRequest() - Remove a request by ID
+ * - applyAction() - Apply workflow action (approve, reject, route, recommend)
+ *
+ * @see app/api/requests/route.ts - POST/GET endpoints
+ * @see app/api/requests/[id]/route.ts - PATCH/DELETE endpoints
  */
 
 import type {
   AgentAssessmentPayload,
   AgentRequestResponse,
+  RequestAction,
+  UserRole,
 } from "@/lib/types";
 
 export type { AgentRequestResponse };
@@ -48,13 +59,44 @@ export async function createRequest(
 }
 
 /**
- * Fetch all agent assessment requests from MongoDB, newest first.
- *
- * @returns { success, requests } on success, { success: false, error } on fail
+ * Options for filtering requests.
  */
-export async function fetchRequests(): Promise<FetchRequestsResult> {
+export type FetchRequestsOptions = {
+  /** Filter by role inbox (EMPLOYEE, MANAGER, CISO). */
+  assignedTo?: (typeof UserRole)[keyof typeof UserRole];
+  /** Filter by status. */
+  status?: (typeof RequestAction)[keyof typeof RequestAction];
+};
+
+/**
+ * Fetch agent assessment requests from MongoDB, newest first.
+ *
+ * @param options - Optional filters (assignedTo, status)
+ * @returns { success, requests } on success, { success: false, error } on fail
+ *
+ * @example
+ * ```ts
+ * // Fetch all requests
+ * const all = await fetchRequests();
+ *
+ * // Fetch only CISO inbox
+ * const cisoInbox = await fetchRequests({ assignedTo: "CISO" });
+ * ```
+ */
+export async function fetchRequests(
+  options?: FetchRequestsOptions
+): Promise<FetchRequestsResult> {
   try {
-    const res = await fetch("/api/requests");
+    const params = new URLSearchParams();
+    if (options?.assignedTo) {
+      params.set("assignedTo", options.assignedTo);
+    }
+    if (options?.status) {
+      params.set("status", options.status);
+    }
+    const query = params.toString();
+    const url = query ? `/api/requests?${query}` : "/api/requests";
+    const res = await fetch(url);
     return await res.json();
   } catch {
     return { success: false, error: "Network error" };
@@ -73,6 +115,71 @@ export async function deleteRequest(
   try {
     const res = await fetch(`/api/requests/${id}`, {
       method: "DELETE",
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+/**
+ * Options for workflow actions.
+ */
+export type ApplyActionOptions = {
+  /** Optional note from the reviewer. */
+  reviewNotes?: string;
+  /** Target user ID when routing to manager. */
+  targetUserId?: string;
+};
+
+/**
+ * Apply a workflow action to a request (approve, reject, route, recommend).
+ *
+ * This is the main function for driving the approval workflow. Actions are:
+ * - CISO: APPROVE, REJECT, ROUTE_TO_MANAGER
+ * - Manager: RECOMMEND_APPROVE, RECOMMEND_REJECT
+ *
+ * @param id - The MongoDB _id of the request
+ * @param action - The action to apply (from RequestAction enum)
+ * @param actorUserId - Who is performing this action (for audit trail)
+ * @param options - Optional reviewNotes and targetUserId
+ * @returns { success, request } on success, { success: false, error } on fail
+ *
+ * @example
+ * ```ts
+ * // CISO approves a request
+ * await applyAction(requestId, "APPROVE", "ciso@test.local", {
+ *   reviewNotes: "Looks good, approved."
+ * });
+ *
+ * // CISO routes to manager
+ * await applyAction(requestId, "ROUTE_TO_MANAGER", "ciso@test.local", {
+ *   targetUserId: "manager@test.local",
+ *   reviewNotes: "Need business context"
+ * });
+ *
+ * // Manager recommends approval
+ * await applyAction(requestId, "RECOMMEND_APPROVE", "manager@test.local", {
+ *   reviewNotes: "Verified with legal team"
+ * });
+ * ```
+ */
+export async function applyAction(
+  id: string,
+  action: (typeof RequestAction)[keyof typeof RequestAction],
+  actorUserId: string,
+  options?: ApplyActionOptions
+): Promise<CreateRequestResult> {
+  try {
+    const res = await fetch(`/api/requests/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        actorUserId,
+        reviewNotes: options?.reviewNotes,
+        targetUserId: options?.targetUserId,
+      }),
     });
     return await res.json();
   } catch {

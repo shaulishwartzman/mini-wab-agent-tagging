@@ -1,4 +1,16 @@
+/**
+ * Main page for the AI Governance & Agent Risk Assessment Platform.
+ *
+ * COMPONENTS:
+ * - RoleSwitcher: MVP testing mode role selector (top banner)
+ * - AgentForm: Agent assessment questionnaire and request management
+ *
+ * @see components/RoleSwitcher.tsx - Role switching UI
+ * @see components/AgentForm.tsx - Main form component
+ */
+
 import AgentForm from "@/components/AgentForm";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 export default function Page() {
   const cardStyle = {
@@ -20,23 +32,27 @@ export default function Page() {
   };
 
   return (
-    <main
-      style={{
-        padding: "48px 32px",
-        display: "grid",
-        gap: "40px",
-        width: "100%",
-        boxSizing: "border-box",
-        backgroundColor: "#f8f9fa",
-        minHeight: "100vh",
-      }}
-    >
-      <div style={{ width: "100%", display: "grid", gap: "40px" }}>
-        <section style={cardStyle}>
-          <h2 style={titleStyle}>Agent Approval Management</h2>
-          <AgentForm />
-        </section>
-      </div>
+    <>
+      {/* MVP Testing Mode Banner */}
+      <RoleSwitcher />
+
+      <main
+        style={{
+          padding: "48px 32px",
+          display: "grid",
+          gap: "40px",
+          width: "100%",
+          boxSizing: "border-box",
+          backgroundColor: "#f8f9fa",
+          minHeight: "100vh",
+        }}
+      >
+        <div style={{ width: "100%", display: "grid", gap: "40px" }}>
+          <section style={cardStyle}>
+            <h2 style={titleStyle}>Agent Approval Management</h2>
+            <AgentForm />
+          </section>
+        </div>
 
       <footer
         style={{
@@ -88,6 +104,7 @@ export default function Page() {
           </div>
         </div>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }

@@ -5,7 +5,11 @@
  * - `PUT    /api/requests/:id` — same behavior as PATCH
  * - `DELETE /api/requests/:id` — remove a request by ID
  *
- * PATCH/PUT Body: `{ action: "APPROVE" | "REJECT" | "ROUTE_TO_MANAGER", reviewNotes?: string }`
+ * PATCH/PUT Body:
+ * - CISO actions: APPROVE, REJECT, ROUTE_TO_MANAGER
+ * - Manager actions: RECOMMEND_APPROVE, RECOMMEND_REJECT
+ *
+ * Additional fields: reviewNotes, actorUserId, targetUserId (for routing)
  * Illegal transitions are rejected with HTTP 400 (enforced by `applyTransition`).
  */
 
@@ -16,7 +20,7 @@ import {
   applyTransition,
   isRequestAction,
 } from "@/lib/requests/transitions";
-import type { RequestStatus } from "@/lib/types";
+import { RequestAction, RequestStatus, UserRole, type ManagerRecommendation } from "@/lib/types";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,10 +29,13 @@ type RouteContext = {
 type TransitionBody = {
   action?: unknown;
   reviewNotes?: string;
+  actorUserId?: string;
+  targetUserId?: string;
 };
 
 /**
  * Shared handler for PATCH and PUT: load request, apply transition, save.
+ * Handles audit fields: approvedBy, resolvedAt, managerRecommendation, routingHistory.
  *
  * @returns Updated request, or 400 / 404 / 500 error payload
  */
@@ -42,7 +49,7 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
         {
           success: false,
           error:
-            "Invalid or missing action. Allowed: APPROVE, REJECT, ROUTE_TO_MANAGER",
+            "Invalid or missing action. Allowed: APPROVE, REJECT, ROUTE_TO_MANAGER, RECOMMEND_APPROVE, RECOMMEND_REJECT",
         },
         { status: 400 },
       );
@@ -58,6 +65,9 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
         { status: 404 },
       );
     }
+
+    const previousStatus = request.status;
+    const previousAssignedToUserId = request.assignedToUserId;
 
     const result = applyTransition(
       request.status as RequestStatus,
@@ -78,6 +88,56 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
       request.reviewNotes = body.reviewNotes;
     }
 
+    const isTerminal = result.status === RequestStatus.APPROVED || result.status === RequestStatus.REJECTED;
+    const actorUserId = body.actorUserId || "unknown";
+    const actorRole = previousStatus === RequestStatus.PENDING_MANAGER ? UserRole.MANAGER : UserRole.CISO;
+
+    if (isTerminal) {
+      request.approvedBy = actorUserId;
+      request.resolvedAt = new Date();
+    }
+
+    if (body.action === RequestAction.ROUTE_TO_MANAGER) {
+      request.assignedToUserId = body.targetUserId || null;
+
+      request.routingHistory.push({
+        from: actorUserId,
+        fromRole: UserRole.CISO,
+        to: body.targetUserId || "unassigned",
+        toRole: UserRole.MANAGER,
+        action: body.action,
+        notes: body.reviewNotes || "",
+        at: new Date(),
+      });
+    }
+
+    if (body.action === RequestAction.RECOMMEND_APPROVE || body.action === RequestAction.RECOMMEND_REJECT) {
+      request.managerRecommendation = body.action as ManagerRecommendation;
+      request.assignedToUserId = null;
+
+      request.routingHistory.push({
+        from: actorUserId,
+        fromRole: UserRole.MANAGER,
+        to: previousAssignedToUserId || "ciso",
+        toRole: UserRole.CISO,
+        action: body.action,
+        notes: body.reviewNotes || "",
+        at: new Date(),
+      });
+    }
+
+    if (isTerminal && actorRole === UserRole.CISO) {
+      request.routingHistory.push({
+        from: actorUserId,
+        fromRole: UserRole.CISO,
+        to: "terminal",
+        toRole: UserRole.CISO,
+        action: body.action,
+        notes: body.reviewNotes || "",
+        at: new Date(),
+      });
+    }
+
     await request.save();
 
     return NextResponse.json({ success: true, request });
@@ -90,7 +150,9 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
 }
 
 /**
- * Apply a workflow action to a request (Approve, Reject, or Route to Manager).
+ * Apply a workflow action to a request.
+ * CISO: APPROVE, REJECT, ROUTE_TO_MANAGER
+ * Manager: RECOMMEND_APPROVE, RECOMMEND_REJECT
  */
 export async function PATCH(req: Request, context: RouteContext) {
   return updateRequestStatus(req, context);

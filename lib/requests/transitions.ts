@@ -1,12 +1,14 @@
 /**
- * Server-side request lifecycle state machine (CISO-first workflow).
+ * Server-side request lifecycle state machine (CISO-final workflow).
+ *
+ * CISO is the final decision-maker. Managers provide recommendations only.
  *
  * Legal transitions:
- * - PENDING_CISO + APPROVE            → APPROVED
- * - PENDING_CISO + REJECT             → REJECTED
+ * - PENDING_CISO + APPROVE            → APPROVED (terminal)
+ * - PENDING_CISO + REJECT             → REJECTED (terminal)
  * - PENDING_CISO + ROUTE_TO_MANAGER   → PENDING_MANAGER (assignedTo MANAGER)
- * - PENDING_MANAGER + APPROVE         → APPROVED
- * - PENDING_MANAGER + REJECT          → REJECTED
+ * - PENDING_MANAGER + RECOMMEND_APPROVE → PENDING_CISO (back to CISO with recommendation)
+ * - PENDING_MANAGER + RECOMMEND_REJECT  → PENDING_CISO (back to CISO with recommendation)
  *
  * Terminal statuses (APPROVED, REJECTED, AUTO_APPROVED) accept no further actions.
  */
@@ -50,13 +52,13 @@ const TRANSITIONS: Record<
     },
   },
   [RequestStatus.PENDING_MANAGER]: {
-    [RequestAction.APPROVE]: {
-      status: RequestStatus.APPROVED,
-      assignedTo: null,
+    [RequestAction.RECOMMEND_APPROVE]: {
+      status: RequestStatus.PENDING_CISO,
+      assignedTo: UserRole.CISO,
     },
-    [RequestAction.REJECT]: {
-      status: RequestStatus.REJECTED,
-      assignedTo: null,
+    [RequestAction.RECOMMEND_REJECT]: {
+      status: RequestStatus.PENDING_CISO,
+      assignedTo: UserRole.CISO,
     },
   },
 };
@@ -65,7 +67,7 @@ const TRANSITIONS: Record<
  * Computes the next `status` and `assignedTo` for a request.
  *
  * @param currentStatus - Current request status in MongoDB
- * @param action - Requested action (`APPROVE` | `REJECT` | `ROUTE_TO_MANAGER`)
+ * @param action - Requested action (CISO: APPROVE, REJECT, ROUTE_TO_MANAGER; Manager: RECOMMEND_APPROVE, RECOMMEND_REJECT)
  * @returns Next workflow fields, or `{ error }` if the transition is illegal
  */
 export function applyTransition(
