@@ -1,3 +1,5 @@
+import type { AgentCard } from "@/lib/types";
+
 type Answers = Record<string, string>;
 
 type Option = {
@@ -21,30 +23,7 @@ type Question =
 
 type Fields = Question[];
 
-export type AgentCard = {
-  id: string;
-  agentName: string;
-
-  classification: {
-    autonomy: string;
-    brain: string;
-    capability: string;
-    management: string;
-  };
-
-  agentLevel: string;
-
-  classificationExplanation: Record<string, string>;
-
-  governance: {
-    agentOwner: string;
-    technicalOwner: string;
-    changeApprover: string;
-    oversightMechanism: string;
-  };
-
-  riskScenarios: string[];
-};
+export type { AgentCard };
 
 const riskMap: Record<string, string[]> = {
   A1: [

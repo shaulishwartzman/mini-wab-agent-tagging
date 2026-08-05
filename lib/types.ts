@@ -64,6 +64,20 @@ export type Governance = {
 };
 
 /**
+ * Client-side assessment card built by `createAgentCard`.
+ * Used by the form UI and assessment engine.
+ */
+export type AgentCard = {
+  id: string;
+  agentName: string;
+  agentLevel: string;
+  classification: Classification;
+  classificationExplanation: Record<string, string>;
+  governance: Governance;
+  riskScenarios: string[];
+};
+
+/**
  * Assessment payload aligned with `createAgentCard` / AgentCard.
  * Sent on `POST /api/requests` (fields beyond `agentName` are optional).
  */

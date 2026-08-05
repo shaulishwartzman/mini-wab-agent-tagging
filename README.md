@@ -75,25 +75,6 @@ Server-side approval workflow for assessment requests:
 
 ---
 
-### Email Distribution
-
-Allows governance questionnaires and agent assessments to be sent directly via email to:
-
-- Product Owners
-- Developers
-- Business Stakeholders
-- Governance Teams
-- Security Teams
-
-Emails include:
-
-- Governance information
-- Classification details
-- Risk assessment results
-- Governance fields requiring completion
-
----
-
 ## Technology Stack
 
 ### Frontend
@@ -106,10 +87,6 @@ Emails include:
 
 - Next.js API Routes
 - Mongoose (MongoDB ODM)
-
-### Email Service
-
-- Resend
 
 ### Storage
 
@@ -132,16 +109,13 @@ app/
 └─ api/
    ├─ agent/
    │  └─ route.ts
-   ├─ requests/
-   │  ├─ route.ts              # POST create, GET list/filter
-   │  └─ [id]/
-   │     └─ route.ts           # PATCH/PUT/DELETE status transitions
-   └─ send-email/
-      └─ route.ts
+   └─ requests/
+      ├─ route.ts              # POST create, GET list/filter
+      └─ [id]/
+         └─ route.ts           # PATCH/PUT/DELETE status transitions
 
 components/
 ├─ AgentForm.tsx               # Assessment form (saves to MongoDB)
-├─ AgentEmailSender.tsx        # Email sharing (reads from MongoDB)
 └─ questionnaire/
    └─ fields.ts
 
@@ -154,7 +128,7 @@ lib/
 │  └─ mongodb.ts               # connectDB() — cached Mongoose connection
 ├─ requests/
 │  └─ transitions.ts           # Legal status transition rules
-└─ types.ts                    # RequestStatus, UserRole, RequestAction, payloads
+└─ types.ts                    # Shared types: AgentCard, RequestStatus, payloads
 
 models/
 └─ AgentRequest.ts             # Mongoose schema (collection: agent_requests)
@@ -274,15 +248,11 @@ npm install
 # MongoDB Atlas — required for DB connection
 # Database name must be agentRequestDB (collection: agent_requests)
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/agentRequestDB?retryWrites=true&w=majority
-
-# Email (optional for local UI work; required to send assessments)
-RESEND_API_KEY=your_resend_api_key
 ```
 
 | Variable | Required for | Notes |
 | --- | --- | --- |
 | `MONGODB_URI` | MongoDB connection via `connectDB()` | From MongoDB Atlas (Database → Connect). **Must include `/agentRequestDB`** in the path. |
-| `RESEND_API_KEY` | `/api/send-email` | From the Resend dashboard. |
 
 > **Note:** System databases `admin` and `local` are reserved — app data goes only in `agentRequestDB`.
 
@@ -348,7 +318,7 @@ http://localhost:3000
 
 **GitHub repo → linked in the Render Dashboard → Render builds & hosts the live site.**
 
-There is no Render config inside this codebase. Render watches this repository; when code is pushed, it runs `npm run build` and `npm start`, then serves the app on the public Render URL. Secrets like `RESEND_API_KEY` and `MONGODB_URI` live in the Render Web Service settings, not in the repo.
+There is no Render config inside this codebase. Render watches this repository; when code is pushed, it runs `npm run build` and `npm start`, then serves the app on the public Render URL. Secrets like `MONGODB_URI` live in the Render Web Service settings, not in the repo.
 
 ---
 
@@ -362,7 +332,7 @@ The connection to Render is managed entirely at the infrastructure level rather 
 
 ### Technical Note (Architecture Verification)
 
-Based on an architectural code review, it is verified that this repository is environment-agnostic. There are no hardcoded Render configurations, such as a `render.yaml` file, `Dockerfile`, or Render-specific API hooks within the codebase itself. All deployment settings, environment variables (like `RESEND_API_KEY` and `MONGODB_URI`), and auto-deploy triggers are configured externally in the Render Web Service Dashboard.
+Based on an architectural code review, it is verified that this repository is environment-agnostic. There are no hardcoded Render configurations, such as a `render.yaml` file, `Dockerfile`, or Render-specific API hooks within the codebase itself. All deployment settings, environment variables (like `MONGODB_URI`), and auto-deploy triggers are configured externally in the Render Web Service Dashboard.
 
 ---
 
@@ -372,8 +342,7 @@ Based on an architectural code review, it is verified that this repository is en
 2. Answer the governance questionnaire.
 3. Generate an AI Governance Card.
 4. Review risk scenarios.
-5. Save the assessment.
-6. Send governance requests by email to relevant stakeholders.
+5. Save the assessment to MongoDB (internal submit).
 
 ---
 

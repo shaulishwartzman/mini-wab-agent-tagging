@@ -4,7 +4,7 @@
  * - `POST /api/requests` — create a new request in MongoDB
  * - `GET  /api/requests` — list requests (optional role/status filters)
  *
- * Responses follow `{ success: true | false, ... }` like `/api/send-email`.
+ * Responses follow `{ success: true | false, ... }`.
  */
 
 import { NextResponse } from "next/server";

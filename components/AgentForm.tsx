@@ -16,27 +16,7 @@ import {
   deleteRequest,
   type AgentRequestResponse,
 } from "@/lib/api/requests";
-
-/** UI-friendly card shape (mirrors AgentRequestResponse for display). */
-type AgentCard = {
-  id: string;
-  agentName: string;
-  agentLevel: string;
-  classification: {
-    autonomy: string;
-    brain: string;
-    capability: string;
-    management: string;
-  };
-  classificationExplanation: Record<string, string>;
-  governance: {
-    agentOwner: string;
-    technicalOwner: string;
-    changeApprover: string;
-    oversightMechanism: string;
-  };
-  riskScenarios: string[];
-};
+import type { AgentCard } from "@/lib/types";
 
 const theme = {
   primary: "#2563eb",
@@ -308,7 +288,7 @@ export default function AgentForm() {
       agentName,
       answers,
       fields,
-    }) as AgentCard;
+    });
 
     const res = await createRequest({
       agentName: card.agentName,
