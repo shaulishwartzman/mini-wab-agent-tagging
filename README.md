@@ -105,17 +105,21 @@ Server-side approval workflow for assessment requests:
 ```text
 app/
 ├─ layout.tsx
-├─ page.tsx
+├─ page.tsx                    # Main dashboard with role-based tabs
 └─ api/
    ├─ agent/
    │  └─ route.ts
    └─ requests/
-      ├─ route.ts              # POST create, GET list/filter
+      ├─ route.ts              # POST create, GET list/filter with pagination
       └─ [id]/
          └─ route.ts           # PATCH/PUT/DELETE status transitions
 
 components/
-├─ AgentForm.tsx               # Assessment form (saves to MongoDB)
+├─ AgentForm.tsx               # Assessment form (employees only)
+├─ DashboardTabs.tsx           # Role-based tab navigation
+├─ Pagination.tsx              # Prev/next pagination controls
+├─ RequestQueue.tsx            # Paginated request list with actions
+├─ RoleSwitcher.tsx            # MVP role selector (top banner)
 └─ questionnaire/
    └─ fields.ts
 
@@ -123,14 +127,22 @@ lib/
 ├─ agent-engine/
 │  └─ createAgentCard.ts       # Build AgentCard from questionnaire answers
 ├─ api/
-│  └─ requests.ts              # Client-side API helpers (createRequest, fetchRequests, applyAction)
+│  └─ requests.ts              # Client-side API helpers with pagination support
+├─ auto-approval/
+│  ├─ greenPathCriteria.ts     # Green-path criteria definitions
+│  └─ rulesEngine.ts           # Auto-approval evaluation logic
 ├─ db/
 │  └─ mongodb.ts               # connectDB() — cached Mongoose connection
 ├─ errors/
 │  └─ authorization.ts         # Hebrew 403 messages + redirect hints
 ├─ requests/
 │  └─ transitions.ts           # Legal status transition + role authorization rules
+├─ utils/
+│  └─ requestHelpers.ts        # Status labels, colors, card conversion helpers
 └─ types.ts                    # Shared types: AgentCard, RequestStatus, payloads
+
+contexts/
+└─ RoleContext.tsx             # React context for current role state
 
 models/
 └─ AgentRequest.ts             # Mongoose schema (collection: agent_requests)
@@ -151,12 +163,16 @@ Server-side persistence for AI agent assessment requests. The questionnaire UI s
 | --- | --- |
 | `lib/types.ts` | Shared enums: `RequestStatus`, `UserRole`, `RequestAction`, plus `AgentAssessmentPayload` |
 | `lib/db/mongodb.ts` | `connectDB()` — connects using `MONGODB_URI`, caches for Next.js hot reload |
-| `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()`, `applyAction()` |
+| `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()`, `applyAction()` with pagination |
 | `lib/errors/authorization.ts` | Hebrew 403 messages + optional redirects (`getAuthorizationErrorInfo`) |
+| `lib/utils/requestHelpers.ts` | Status labels, badge colors, card conversion utilities |
 | `models/AgentRequest.ts` | Mongoose model (collection: `agent_requests`) |
 | `lib/requests/transitions.ts` | `applyTransition()` — state machine; `isAuthorizedForAction()` — role-based auth |
-| `app/api/requests/route.ts` | Collection: create + list |
+| `app/api/requests/route.ts` | Collection: create + list with pagination |
 | `app/api/requests/[id]/route.ts` | Item: approve / reject / route / delete |
+| `components/DashboardTabs.tsx` | Role-based tab navigation |
+| `components/RequestQueue.tsx` | Paginated request list with role-specific actions |
+| `components/Pagination.tsx` | Pagination controls (prev/next with page indicator) |
 
 ### Status Workflow (CISO-Final)
 
@@ -709,6 +725,84 @@ The role switcher (yellow banner at the top) provides three predefined test user
 ### Note
 
 > This role switcher is for **MVP/demo purposes only**. In production, it will be replaced with proper user authentication (e.g., OAuth, JWT sessions, or enterprise SSO).
+
+---
+
+## Queue Management UI
+
+Role-based dashboard with paginated request queues. Different roles see different default views.
+
+### Role-Based Views
+
+| Role | Default Tab | Tab 1 | Tab 2 |
+| --- | --- | --- | --- |
+| EMPLOYEE | Form | הגשת בקשה (questionnaire) | הבקשות שלי (my requests) |
+| MANAGER | Pending queue | ממתין להמלצתי (pending for me) | — (reviewer only in MVP) |
+| CISO | Pending queue | ממתין לאישור (pending approval) | כל הבקשות (all requests) |
+
+**Key UX Rules:**
+- Only employees see the questionnaire form
+- Manager is a reviewer only in MVP (no form, no "my requests")
+- CISO defaults to the pending approval queue (no form)
+- All queues are paginated (10 items per page)
+
+### Pagination API
+
+The `GET /api/requests` endpoint now supports pagination and additional filters:
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `page` | number | 1 | Page number (1-indexed) |
+| `limit` | number | 10 | Items per page (max 50) |
+| `assignedTo` | string | — | Filter by role inbox (CISO, MANAGER) |
+| `assignedToUserId` | string | — | Filter by specific user assignment |
+| `submittedByUserId` | string | — | Filter by who submitted (for "my requests") |
+| `status` | string | — | Filter by request status |
+
+Response includes pagination metadata:
+
+```json
+{
+  "success": true,
+  "requests": [...],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 42,
+    "totalPages": 5
+  }
+}
+```
+
+### Components
+
+| Component | Purpose |
+| --- | --- |
+| `DashboardTabs` | Role-based tab navigation |
+| `RequestQueue` | Paginated request list with role-specific actions |
+| `Pagination` | Prev/next controls with page indicator |
+| `AgentForm` | Questionnaire form (employee submission only) |
+
+### Filter Logic per Tab
+
+| Tab | API Filter | Shows |
+| --- | --- | --- |
+| הגשת בקשה (employee) | `submittedByUserId` + status=APPROVED/AUTO_APPROVED | Form + approved agents |
+| הבקשות שלי (employee) | `submittedByUserId = currentUser.id` | All request statuses (pending, rejected, etc.) |
+| ממתין להמלצתי (manager) | `assignedTo = MANAGER` + `assignedToUserId = currentUser.id` | Pending recommendations |
+| ממתין לאישור (CISO) | `assignedTo = CISO` | Pending approvals |
+| כל הבקשות (CISO) | No filter (all requests) | Full request history |
+
+### Shared Helpers
+
+`lib/utils/requestHelpers.ts` provides:
+
+- `toAgentCard()` — Convert API response to UI card shape
+- `getStatusLabel()` — Hebrew labels for statuses
+- `getStatusBadgeStyle()` — Badge colors by status
+- `isTerminalStatus()` — Check if status is final
+- `formatDate()` — Hebrew locale date formatting
+- `getRecommendationLabel()` — Manager recommendation labels
 
 ---
 

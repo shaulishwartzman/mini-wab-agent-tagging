@@ -2,7 +2,15 @@
  * Collection API for AI Agent assessment requests.
  *
  * - `POST /api/requests` — create a new request in MongoDB
- * - `GET  /api/requests` — list requests (optional role/status filters)
+ * - `GET  /api/requests` — list requests with filters and pagination
+ *
+ * GET Query Params:
+ * - `assignedTo` — filter by role inbox (CISO, MANAGER)
+ * - `assignedToUserId` — filter by specific user (for manager routing)
+ * - `submittedByUserId` — filter by submitter (for "my requests")
+ * - `status` — filter by request status
+ * - `page` — page number (default 1)
+ * - `limit` — items per page (default 10, max 50)
  *
  * Responses follow `{ success: true | false, ... }`.
  */
@@ -96,24 +104,37 @@ export async function POST(req: Request) {
 }
 
 /**
- * List agent assessment requests, newest first.
+ * List agent assessment requests with filtering and pagination.
  *
  * Query params:
- * - `assignedTo` — filter by role inbox (`EMPLOYEE` | `MANAGER` | `CISO`)
+ * - `assignedTo` — filter by role inbox (EMPLOYEE | MANAGER | CISO)
+ * - `assignedToUserId` — filter by specific user assignment (for manager routing)
+ * - `submittedByUserId` — filter by who submitted the request
  * - `status` — filter by request status
+ * - `page` — page number (default: 1)
+ * - `limit` — items per page (default: 10, max: 50)
  *
- * @returns `{ success: true, requests }` or `400` / `500` error payload
+ * @returns `{ success, requests, pagination }` or `400` / `500` error payload
  */
 export async function GET(req: Request) {
   try {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
+
+    // Filter params
     const assignedTo = searchParams.get("assignedTo");
+    const assignedToUserId = searchParams.get("assignedToUserId");
+    const submittedByUserId = searchParams.get("submittedByUserId");
     const status = searchParams.get("status");
 
-    const filter: Record<string, string> = {};
+    // Pagination params (with bounds)
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "10", 10)));
 
+    const filter: Record<string, string | null> = {};
+
+    // Validate and apply assignedTo filter
     if (assignedTo) {
       if (!isUserRole(assignedTo)) {
         return NextResponse.json(
@@ -127,6 +148,17 @@ export async function GET(req: Request) {
       filter.assignedTo = assignedTo;
     }
 
+    // Apply assignedToUserId filter (for manager-specific routing)
+    if (assignedToUserId) {
+      filter.assignedToUserId = assignedToUserId;
+    }
+
+    // Apply submittedByUserId filter (for "my requests" view)
+    if (submittedByUserId) {
+      filter.submittedByUserId = submittedByUserId;
+    }
+
+    // Validate and apply status filter
     if (status) {
       if (!isRequestStatus(status)) {
         return NextResponse.json(
@@ -140,11 +172,27 @@ export async function GET(req: Request) {
       filter.status = status;
     }
 
+    // Get total count for pagination
+    const total = await AgentRequest.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit);
+
+    // Fetch paginated results
     const requests = await AgentRequest.find(filter)
       .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
       .lean();
 
-    return NextResponse.json({ success: true, requests });
+    return NextResponse.json({
+      success: true,
+      requests,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
   } catch {
     return NextResponse.json(
       { success: false, error: "Internal server error" },

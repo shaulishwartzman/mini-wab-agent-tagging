@@ -6,9 +6,14 @@
  *
  * FUNCTIONS:
  * - createRequest() - Create a new assessment request
- * - fetchRequests() - List requests with optional filters
+ * - fetchRequests() - List requests with filters and pagination
  * - deleteRequest() - Remove a request by ID
  * - applyAction() - Apply workflow action (approve, reject, route, recommend)
+ *
+ * TYPES:
+ * - PaginationInfo - Pagination metadata (page, limit, total, totalPages)
+ * - FetchRequestsOptions - Filter and pagination options
+ * - FetchRequestsResult - Response with requests array and pagination
  *
  * @see app/api/requests/route.ts - POST/GET endpoints
  * @see app/api/requests/[id]/route.ts - PATCH/DELETE endpoints
@@ -32,10 +37,19 @@ export type CreateRequestResult = {
   error?: string;
 };
 
-/** Response shape for list operations. */
+/** Pagination metadata returned by list operations. */
+export type PaginationInfo = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+/** Response shape for list operations with pagination. */
 export type FetchRequestsResult = {
   success: boolean;
   requests?: AgentRequestResponse[];
+  pagination?: PaginationInfo;
   error?: string;
 };
 
@@ -61,28 +75,49 @@ export async function createRequest(
 }
 
 /**
- * Options for filtering requests.
+ * Options for filtering and paginating requests.
  */
 export type FetchRequestsOptions = {
-  /** Filter by role inbox (EMPLOYEE, MANAGER, CISO). */
+  /** Filter by role inbox (MANAGER, CISO). */
   assignedTo?: (typeof UserRole)[keyof typeof UserRole];
-  /** Filter by status. */
-  status?: (typeof RequestAction)[keyof typeof RequestAction];
+  /** Filter by specific user assignment (for manager routing). */
+  assignedToUserId?: string;
+  /** Filter by who submitted the request (for "my requests" view). */
+  submittedByUserId?: string;
+  /** Filter by request status. */
+  status?: string;
+  /** Page number (default 1). */
+  page?: number;
+  /** Items per page (default 10, max 50). */
+  limit?: number;
 };
 
 /**
- * Fetch agent assessment requests from MongoDB, newest first.
+ * Fetch agent assessment requests from MongoDB with filtering and pagination.
  *
- * @param options - Optional filters (assignedTo, status)
- * @returns { success, requests } on success, { success: false, error } on fail
+ * @param options - Filters and pagination (all optional)
+ * @returns { success, requests, pagination } on success, { success: false, error } on fail
  *
  * @example
  * ```ts
- * // Fetch all requests
+ * // Fetch all requests (first page)
  * const all = await fetchRequests();
  *
- * // Fetch only CISO inbox
+ * // Fetch CISO inbox
  * const cisoInbox = await fetchRequests({ assignedTo: "CISO" });
+ *
+ * // Fetch my submitted requests with pagination
+ * const myRequests = await fetchRequests({
+ *   submittedByUserId: "employee@test.local",
+ *   page: 2,
+ *   limit: 10,
+ * });
+ *
+ * // Fetch manager's assigned requests
+ * const managerQueue = await fetchRequests({
+ *   assignedTo: "MANAGER",
+ *   assignedToUserId: "manager@test.local",
+ * });
  * ```
  */
 export async function fetchRequests(
@@ -90,12 +125,26 @@ export async function fetchRequests(
 ): Promise<FetchRequestsResult> {
   try {
     const params = new URLSearchParams();
+
     if (options?.assignedTo) {
       params.set("assignedTo", options.assignedTo);
+    }
+    if (options?.assignedToUserId) {
+      params.set("assignedToUserId", options.assignedToUserId);
+    }
+    if (options?.submittedByUserId) {
+      params.set("submittedByUserId", options.submittedByUserId);
     }
     if (options?.status) {
       params.set("status", options.status);
     }
+    if (options?.page) {
+      params.set("page", String(options.page));
+    }
+    if (options?.limit) {
+      params.set("limit", String(options.limit));
+    }
+
     const query = params.toString();
     const url = query ? `/api/requests?${query}` : "/api/requests";
     const res = await fetch(url);

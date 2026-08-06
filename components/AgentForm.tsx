@@ -6,26 +6,27 @@
  * Collects questionnaire answers, generates a governance/risk card via
  * createAgentCard, and persists to MongoDB via /api/requests.
  *
+ * DISPLAYS:
+ * 1. Questionnaire form for submitting new agent requests
+ * 2. "הסוכנים שלך במאגר" - List of user's approved agents
+ *
  * AUTO-APPROVAL INTEGRATION:
  * On submit, the form evaluates answers against green-path criteria using
  * evaluateForAutoApproval(). If all criteria are met, the request is
  * auto-approved. Otherwise, it goes to PENDING_CISO for manual review.
  *
  * @see lib/auto-approval/rulesEngine.ts - Auto-approval evaluation
+ * @see components/RequestQueue.tsx - For tracking request status (הבקשות שלי tab)
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { fields } from "@/components/questionnaire/fields";
 import { createAgentCard } from "@/lib/agent-engine/createAgentCard";
-import {
-  createRequest,
-  fetchRequests,
-  deleteRequest,
-  type AgentRequestResponse,
-} from "@/lib/api/requests";
+import { createRequest, fetchRequests, deleteRequest } from "@/lib/api/requests";
 import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
 import { useRole } from "@/contexts/RoleContext";
-import type { AgentCard } from "@/lib/types";
+import { toAgentCard, type AgentCard } from "@/lib/utils/requestHelpers";
+import { RequestStatus } from "@/lib/types";
 
 const theme = {
   primary: "#2563eb",
@@ -41,19 +42,6 @@ const theme = {
   accentDark: "#1e293b",
   accentLight: "#f8fafc",
 };
-
-/** Map API response to UI card shape. */
-function toAgentCard(res: AgentRequestResponse): AgentCard {
-  return {
-    id: res._id,
-    agentName: res.agentName,
-    agentLevel: res.agentLevel,
-    classification: res.classification,
-    classificationExplanation: res.classificationExplanation,
-    governance: res.governance,
-    riskScenarios: res.riskScenarios,
-  };
-}
 
 const getReadableAnswer = (fieldId: string, optionId: string) => {
   const field = fields.find((f) => f.question_id === fieldId);
@@ -258,22 +246,32 @@ export default function AgentForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [autoApprovalEligible, setAutoApprovalEligible] = useState<boolean | null>(
-    null
-  );
+  const [autoApprovalEligible, setAutoApprovalEligible] = useState<
+    boolean | null
+  >(null);
 
-  /** Load agents from MongoDB on mount. */
+  /** Load approved agents for current user from MongoDB. */
   const loadAgents = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await fetchRequests();
+    const res = await fetchRequests({
+      submittedByUserId: currentUser.id,
+    });
     if (res.success && res.requests) {
-      setAgents(res.requests.map(toAgentCard));
+      // Only show approved/auto-approved agents
+      const approvedAgents = res.requests
+        .filter(
+          (r) =>
+            r.status === RequestStatus.APPROVED ||
+            r.status === RequestStatus.AUTO_APPROVED
+        )
+        .map(toAgentCard);
+      setAgents(approvedAgents);
     } else {
       setError(res.error || "Failed to load agents");
     }
     setLoading(false);
-  }, []);
+  }, [currentUser.id]);
 
   useEffect(() => {
     loadAgents();
@@ -618,7 +616,7 @@ export default function AgentForm() {
               border: `1px solid ${theme.border}`,
             }}
           >
-            טרם מופו מערכות AI בארגון.
+            טרם אושרו סוכני AI עבורך.
           </p>
         ) : (
           <div

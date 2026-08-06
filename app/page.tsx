@@ -1,19 +1,38 @@
 /**
  * Main page for the AI Governance & Agent Risk Assessment Platform.
  *
- * COMPONENTS:
- * - RoleSwitcher: MVP testing mode role selector (top banner)
- * - AgentForm: Agent assessment questionnaire and request management
+ * Role-based dashboard with conditional content:
+ * - EMPLOYEE: Form + My Requests
+ * - MANAGER: Pending Recommendations only (MVP reviewer role)
+ * - CISO: Pending Approvals + All Requests
  *
- * @see components/RoleSwitcher.tsx - Role switching UI
- * @see components/AgentForm.tsx - Main form component
+ * @see components/RoleSwitcher.tsx - Role switching UI (MVP testing)
+ * @see components/DashboardTabs.tsx - Tab navigation
+ * @see components/RequestQueue.tsx - Request lists with pagination
+ * @see components/AgentForm.tsx - Questionnaire form (employees only)
  */
 
+"use client";
+
+import { useState, useEffect } from "react";
 import AgentForm from "@/components/AgentForm";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { DashboardTabs, getDefaultTab } from "@/components/DashboardTabs";
+import { RequestQueue } from "@/components/RequestQueue";
+import { useRole } from "@/contexts/RoleContext";
+import { UserRole } from "@/lib/types";
 
 export default function Page() {
-  const cardStyle = {
+  const { currentUser } = useRole();
+  const [activeTab, setActiveTab] = useState(() =>
+    getDefaultTab(currentUser.role)
+  );
+
+  useEffect(() => {
+    setActiveTab(getDefaultTab(currentUser.role));
+  }, [currentUser.role]);
+
+  const cardStyle: React.CSSProperties = {
     backgroundColor: "#ffffff",
     borderRadius: "16px",
     padding: "32px",
@@ -22,7 +41,7 @@ export default function Page() {
     width: "100%",
   };
 
-  const titleStyle = {
+  const titleStyle: React.CSSProperties = {
     fontSize: "24px",
     fontWeight: "600",
     color: "#101828",
@@ -31,9 +50,67 @@ export default function Page() {
     letterSpacing: "-0.02em",
   };
 
+  const renderContent = () => {
+    const role = currentUser.role;
+
+    if (role === UserRole.EMPLOYEE) {
+      if (activeTab === "form") {
+        return <AgentForm />;
+      }
+      if (activeTab === "my-requests") {
+        return (
+          <RequestQueue
+            filter={{ submittedByUserId: currentUser.id }}
+            title="הבקשות שלי"
+            showActions={false}
+          />
+        );
+      }
+    }
+
+    if (role === UserRole.MANAGER) {
+      return (
+        <RequestQueue
+          filter={{
+            assignedTo: UserRole.MANAGER,
+            assignedToUserId: currentUser.id,
+          }}
+          title="ממתין להמלצתי"
+          showActions={true}
+        />
+      );
+    }
+
+    if (role === UserRole.CISO) {
+      if (activeTab === "pending") {
+        return (
+          <RequestQueue
+            filter={{ assignedTo: UserRole.CISO }}
+            title="ממתין לאישור"
+            showActions={true}
+          />
+        );
+      }
+      if (activeTab === "all-requests") {
+        return (
+          <RequestQueue
+            filter={{}}
+            title="כל הבקשות"
+            showActions={true}
+          />
+        );
+      }
+    }
+
+    return (
+      <div style={{ color: "#64748b", textAlign: "center", padding: "40px" }}>
+        בחר לשונית
+      </div>
+    );
+  };
+
   return (
     <>
-      {/* MVP Testing Mode Banner */}
       <RoleSwitcher />
 
       <main
@@ -50,60 +127,66 @@ export default function Page() {
         <div style={{ width: "100%", display: "grid", gap: "40px" }}>
           <section style={cardStyle}>
             <h2 style={titleStyle}>Agent Approval Management</h2>
-            <AgentForm />
+
+            <DashboardTabs
+              currentTab={activeTab}
+              onTabChange={setActiveTab}
+              role={currentUser.role}
+            />
+
+            {renderContent()}
           </section>
         </div>
 
-      <footer
-        style={{
-          backgroundColor: "#0f172a",
-          color: "#94a3b8",
-          padding: "24px 20px",
-          textAlign: "center",
-          fontSize: 13,
-          lineHeight: 1.6,
-          width: "100%",
-        }}
-      >
-        <div
+        <footer
           style={{
-            maxWidth: 900,
-            margin: "0 auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            alignItems: "center",
+            backgroundColor: "#0f172a",
+            color: "#94a3b8",
+            padding: "24px 20px",
+            textAlign: "center",
+            fontSize: 13,
+            lineHeight: 1.6,
+            width: "100%",
           }}
         >
-          <div style={{ color: "#ffffff", fontWeight: 700, fontSize: 14 }}>
-            נבנה על ידי <span style={{ color: "#38bdf8" }}>LEEH</span>{" "}
-            &copy; {new Date().getFullYear()}
-          </div>
           <div
             style={{
+              maxWidth: 900,
+              margin: "0 auto",
               display: "flex",
-              gap: 12,
-              marginTop: 4,
-              flexWrap: "wrap",
-              justifyContent: "center",
+              flexDirection: "column",
+              gap: 6,
+              alignItems: "center",
             }}
           >
-            <span>
-              ליצירת קשר ותמיכה:{" "}
-              <strong>Shauli Shwartzman</strong>
-            </span>
-            <span>|</span>
-            <span>
-              <a
-                href="mailto:shauli.sh321@gmail.com"
-                style={{ color: "#38bdf8", textDecoration: "none" }}
-              >
-                shauli.sh321@gmail.com
-              </a>
-            </span>
+            <div style={{ color: "#ffffff", fontWeight: 700, fontSize: 14 }}>
+              נבנה על ידי <span style={{ color: "#38bdf8" }}>LEEH</span>{" "}
+              &copy; {new Date().getFullYear()}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginTop: 4,
+                flexWrap: "wrap",
+                justifyContent: "center",
+              }}
+            >
+              <span>
+                ליצירת קשר ותמיכה: <strong>Shauli Shwartzman</strong>
+              </span>
+              <span>|</span>
+              <span>
+                <a
+                  href="mailto:shauli.sh321@gmail.com"
+                  style={{ color: "#38bdf8", textDecoration: "none" }}
+                >
+                  shauli.sh321@gmail.com
+                </a>
+              </span>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
       </main>
     </>
   );
