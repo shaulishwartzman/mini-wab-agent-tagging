@@ -31,7 +31,11 @@ import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
 import { toCustomCriteria } from "@/lib/auto-approval/greenPathCriteria";
 import { fetchGreenPathSettings } from "@/lib/api/greenPathSettings";
 import { useRole } from "@/contexts/RoleContext";
-import { toAgentCard, type AgentCard } from "@/lib/utils/requestHelpers";
+import {
+  toAgentCard,
+  getReadableAnswer,
+  type AgentCard,
+} from "@/lib/utils/requestHelpers";
 import { RequestStatus } from "@/lib/types";
 
 const theme = {
@@ -47,12 +51,6 @@ const theme = {
   infoBg: "#f1f5f9",
   accentDark: "#1e293b",
   accentLight: "#f8fafc",
-};
-
-const getReadableAnswer = (fieldId: string, optionId: string) => {
-  const field = fields.find((f) => f.question_id === fieldId);
-  const option = field?.options?.find((o) => o.option_id === optionId);
-  return option ? option.label : optionId;
 };
 
 /** Renders a governance/risk card with optional dark theme. */

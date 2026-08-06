@@ -211,3 +211,17 @@ export function getRecommendationLabel(
   if (recommendation === "RECOMMEND_REJECT") return "ממליץ לדחות";
   return recommendation;
 }
+
+/**
+ * Hebrew label for a routing-history action.
+ *
+ * @param action - Workflow action string from routingHistory
+ */
+export function getRoutingActionLabel(action: string): string {
+  if (action === "ROUTE_TO_MANAGER") return "הועבר למנהל";
+  if (action === "RECOMMEND_APPROVE") return "המלצה לאישור";
+  if (action === "RECOMMEND_REJECT") return "המלצה לדחייה";
+  if (action === "APPROVE") return "אושר";
+  if (action === "REJECT") return "נדחה";
+  return action;
+}

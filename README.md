@@ -59,9 +59,15 @@ Examples include:
 
 ---
 
-### Agent Inventory Repository
+### Agent Inventory & Request Store (MongoDB only)
 
-Stores assessed AI systems in MongoDB Atlas via `/api/requests`. The UI fetches and persists all agent assessments through the API — no localStorage dependency.
+All assessment requests and approved agents are stored in **MongoDB Atlas** via `/api/requests`.
+
+- Create / list / update / delete go through the API → Mongoose → MongoDB
+- Employee “הסוכנים שלך במאגר” and all role queues load from MongoDB
+- **No browser LocalStorage (or similar) for requests / agents** — that old client inventory path was removed
+
+The only LocalStorage usage in the app is the MVP **Role Switcher** (`mvp-test-role` in `RoleContext`), which is unrelated to request persistence and will be replaced by real auth later.
 
 ---
 
@@ -69,9 +75,10 @@ Stores assessed AI systems in MongoDB Atlas via `/api/requests`. The UI fetches 
 
 Server-side approval workflow for assessment requests:
 
-- Create requests with questionnaire / AgentCard data
-- Filter inboxes by role (`assignedTo`) or status
-- Approve, reject, or route to manager with enforced state transitions
+- Create requests with questionnaire / AgentCard data (optionally auto-approved via green path)
+- Filter inboxes by role (`assignedTo`), user (`assignedToUserId` / `submittedByUserId`), or status
+- CISO hub-and-spoke: approve, reject, or route to manager; manager recommends only
+- Optional CISO↔manager notes stored on the request and in `routingHistory[].notes`
 
 ---
 
@@ -90,13 +97,40 @@ Server-side approval workflow for assessment requests:
 
 ### Storage
 
-- MongoDB Atlas + Mongoose (`AgentRequest` via `/api/requests`)
-- Database: `agentRequestDB`
-- Collection: `agent_requests`
+| Store | What lives there |
+| --- | --- |
+| MongoDB `agentRequestDB.agent_requests` | All assessment requests + workflow/audit fields |
+| MongoDB `agentRequestDB.green_path_settings` | CISO green-path criteria (singleton) |
+| Browser LocalStorage (`mvp-test-role`) | MVP selected role only — **not** requests |
 
 ### Hosting
 
-- Render
+- Render (env: `MONGODB_URI` in the Web Service dashboard)
+
+---
+
+## Architecture (Data & Routing)
+
+```text
+[Employee / Manager / CISO UI]
+        │  fetch / PATCH / DELETE
+        ▼
+ Next.js API  (/api/requests, /api/green-path-settings)
+        │  connectDB()
+        ▼
+ MongoDB Atlas  (agentRequestDB)
+   ├─ agent_requests
+   └─ green_path_settings
+```
+
+**Hub-and-spoke routing (CISO is the hub):**
+
+1. Employee submits → usually `PENDING_CISO` (or `AUTO_APPROVED` if green path passes)
+2. CISO may **route** to a manager → `PENDING_MANAGER` + `assignedToUserId`
+3. Manager **recommends** (approve/reject) → returns to `PENDING_CISO`; identity & optional note stay in `routingHistory`
+4. CISO makes the **final** APPROVE / REJECT → terminal status; request appears in approval history
+
+Manager never sets terminal APPROVED/REJECTED. Optional correspondence is drafted in the UI under “להתכתבות עם המנהל / ה-CISO” and saved as `reviewNotes` + `routingHistory[].notes`.
 
 ---
 
@@ -109,8 +143,6 @@ app/
 ├─ green-path/
 │  └─ page.tsx                 # CISO Green Path settings page
 └─ api/
-   ├─ agent/
-   │  └─ route.ts
    ├─ green-path-settings/
    │  └─ route.ts              # GET/PUT green path criteria
    └─ requests/
@@ -124,6 +156,8 @@ components/
 ├─ FieldHelpTooltip.tsx        # (?) hover help next to questionnaire fields
 ├─ GreenPathSettingsForm.tsx   # CISO checkbox editor for green path
 ├─ Pagination.tsx              # Prev/next pagination controls
+├─ RequestAnswersPanel.tsx     # Read-only questionnaire toggle in request cards
+├─ CorrespondencePanel.tsx     # Collapsible CISO↔manager note thread
 ├─ RequestQueue.tsx            # Paginated request list with actions
 ├─ RoleSwitcher.tsx            # MVP role selector (top banner)
 └─ questionnaire/
@@ -248,6 +282,8 @@ CISO is the **final decision-maker**. Managers provide **recommendations only** 
 - **Free text doesn't block auto-approval** — `agentPurpose` is for audit/context, not approval logic
 - **Terminal = no assignee** — When APPROVED/REJECTED/AUTO_APPROVED, `assignedTo = null`
 - **Role-based authorization** — API enforces `actorRole` must be authorized for the requested action (403 if not)
+- **Persistence is MongoDB-only** — requests are never written to LocalStorage; delete removes the MongoDB document
+- **Optional correspondence** — CISO/manager notes are optional; empty notes are allowed on every action
 
 #### Schema Fields
 
@@ -257,10 +293,10 @@ CISO is the **final decision-maker**. Managers provide **recommendations only** 
 | --- | --- | --- |
 | `status` | Enum | PENDING_CISO, PENDING_MANAGER, AUTO_APPROVED, APPROVED, REJECTED |
 | `assignedTo` | Enum / null | Which role's inbox (CISO, MANAGER, or null for terminal) |
-| `assignedToUserId` | String / null | Specific user ID when routed to a manager |
+| `assignedToUserId` | String / null | Current assignee user id (set when routed to a manager; cleared after recommend) |
 | `submittedByRole` | Enum | EMPLOYEE, MANAGER, CISO |
 | `submittedByUserId` | String | User ID (email) of who submitted |
-| `reviewNotes` | String | Current reviewer's notes |
+| `reviewNotes` | String | Latest optional reviewer note (also stored per step in `routingHistory[].notes`) |
 
 **Audit Trail Fields:**
 
@@ -269,7 +305,7 @@ CISO is the **final decision-maker**. Managers provide **recommendations only** 
 | `approvedBy` | String / null | Who made final decision: `SYSTEM_AUTO_APPROVAL` or user ID |
 | `resolvedAt` | Date / null | When request reached terminal status |
 | `managerRecommendation` | Enum / null | `RECOMMEND_APPROVE` or `RECOMMEND_REJECT` |
-| `routingHistory` | Array | Full routing chain for audit (see below) |
+| `routingHistory` | Array | Full routing chain for audit (includes who recommended via `from` + optional `notes`) |
 
 **Auto-Approval Fields:**
 
@@ -428,7 +464,7 @@ Apply a workflow action with role-based authorization.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `reviewNotes` | string | Note from reviewer |
+| `reviewNotes` | string | Optional note/question (CISO→manager on route, manager→CISO on recommend, or final decision note) |
 | `targetUserId` | string | For ROUTE_TO_MANAGER: which manager to assign |
 
 **Example request body:**
@@ -552,17 +588,21 @@ npm install
 ### Environment variables
 
 1. Copy `.env.example` to `.env.local` in the project root.
-2. Fill in real credentials. Next.js loads `.env.local` automatically; files like `atlas-credentials.env` are **not** read by the app.
+2. Fill in real credentials. Next.js loads **only** `.env.local` / `.env` style files — ad-hoc files like `atlas-credentials.env` are **not** read by the app.
+3. Restart `npm run dev` after changing env vars.
 
 ```env
-# MongoDB Atlas — required for DB connection
-# Database name must be agentRequestDB (collection: agent_requests)
+# MongoDB Atlas — required for all request / settings persistence
+# Database name must be agentRequestDB
+# Collections: agent_requests, green_path_settings
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/agentRequestDB?retryWrites=true&w=majority
 ```
 
-| Variable | Required for | Notes |
-| --- | --- | --- |
-| `MONGODB_URI` | MongoDB connection via `connectDB()` | From MongoDB Atlas (Database → Connect). **Must include `/agentRequestDB`** in the path. |
+| Variable | Required | Used by | Notes |
+| --- | --- | --- | --- |
+| `MONGODB_URI` | **Yes** | `lib/db/mongodb.ts` → `connectDB()` | Atlas connection string. **Must include `/agentRequestDB`** in the path. Without it, API routes that touch the DB fail at startup/connect. |
+
+On Render (production), set the same `MONGODB_URI` in the Web Service **Environment** settings (not in the repo).
 
 > **Note:** System databases `admin` and `local` are reserved — app data goes only in `agentRequestDB`.
 
@@ -572,6 +612,7 @@ MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/agentReque
 2. Copy the connection string into `.env.local` as `MONGODB_URI` (include `/agentRequestDB` in the path).
 3. In Atlas → **Network Access**, allow your current IP (or `0.0.0.0/0` for temporary school/dev use).
 4. Never commit `.env.local` or credential dumps (e.g. `atlas-credentials.env`) — they are gitignored.
+5. After submit, verify in Atlas → Browse Collections → `agent_requests` (and `green_path_settings` after CISO saves green path).
 
 ---
 
@@ -706,6 +747,8 @@ The role switcher (yellow banner at the top) provides three predefined test user
 ### Note
 
 > This role switcher is for **MVP/demo purposes only**. In production, it will be replaced with proper user authentication (e.g., OAuth, JWT sessions, or enterprise SSO).
+>
+> Selected role is cached in browser LocalStorage under `mvp-test-role` for convenience. **Requests and agents are not stored in LocalStorage** — only in MongoDB via `/api/requests`.
 
 ---
 
@@ -742,17 +785,20 @@ Presets live in `lib/utils/dashboardFilters.ts` (`CISO_QUEUE_VIEWS` / `getCisoQu
 **History notes:**
 - Includes manual approvals, rejections, and green-path `AUTO_APPROVED` (all terminal)
 - View-only (`showActions: false`) — no approve/reject/route on history cards
-- Sub-filters (active mode is hidden from the button row):
+- Sub-filters (active mode is hidden from sibling controls):
   - **הכל** — `APPROVED,REJECTED,AUTO_APPROVED`
-  - **מאושרות** — `APPROVED,AUTO_APPROVED`
+  - **מאושרות** (dropdown):
+    - **כל המאושרות** — `APPROVED,AUTO_APPROVED`
+    - **אוטומטי בלבד** — `AUTO_APPROVED`
   - **נדחו** — `REJECTED`
-- Helpers: `getHistoryFilterOptions`, `getVisibleHistoryFilterButtons`, `HistoryStatusFilters`
+- Helpers: `getHistoryFilterOptions`, `HistoryStatusFilters`, approved-dropdown helpers in `dashboardFilters.ts`
 
 **Hub & Spoke behavior:**
 - When CISO routes a request to a manager → it **leaves** ממתין לטיפולי (`assignedTo` becomes MANAGER)
 - It **stays** in בקשות פעילות (`PENDING_MANAGER` is still active)
-- After the manager recommends → it **returns** to ממתין לטיפולי (`PENDING_CISO` + `assignedTo=CISO`)
+- After the manager recommends → it **returns** to ממתין לטיפולי (`PENDING_CISO` + `assignedTo=CISO`); `assignedToUserId` is cleared; manager identity is in `routingHistory[].from`
 - After final APPROVE/REJECT (or auto-approve on create) → appears in היסטוריית אישורים
+- Optional CISO↔manager notes: on route / recommend (and other actions), `reviewNotes` is stored on the request and copied into that `routingHistory` entry's `notes`
 
 ### Pagination API
 
@@ -801,9 +847,10 @@ Response includes pagination metadata:
 | --- | --- |
 | `DashboardTabs` | Role-based tab navigation (includes CISO quick filters) |
 | `lib/utils/dashboardFilters.ts` | CISO tab → API filter presets (`getCisoQueueView`, history sub-filters) |
-| `HistoryStatusFilters` | History buttons: הכל / מאושרות / נדחו (hides active mode) |
-| `RequestQueue` | Paginated request list with role-specific actions |
+| `HistoryStatusFilters` | History filters: הכל / מאושרות▾ / נדחו |
+| `RequestQueue` | Paginated request list with role-specific actions + optional CISO↔manager notes |
 | `RequestAnswersPanel` | Read-only questionnaire answers inside expanded cards |
+| `CorrespondencePanel` | Collapsible CISO↔manager thread + optional compose field (`להתכתבות עם המנהל` / `להתכתבות עם ה-CISO`) |
 | `Pagination` | Prev/next controls with page indicator |
 | `AgentForm` | Questionnaire form + approved agents (employee) |
 | `FieldHelpTooltip` | (?) hover help on employee form fields |
@@ -855,6 +902,8 @@ This fulfills the “context panel” review need via card expansion + answers t
 - `isTerminalStatus()` — Check if status is final
 - `formatDate()` — Hebrew locale date formatting
 - `getRecommendationLabel()` — Manager recommendation labels
+- `getRoutingActionLabel()` — Hebrew labels for `routingHistory` actions
+- `getReadableAnswer()` / `getQuestionnaireAnswerRows()` — read-only questionnaire display
 
 ---
 
@@ -863,10 +912,9 @@ This fulfills the “context panel” review need via card expansion + answers t
 - PDF export
 - Excel reporting
 - Risk scoring engine
-- Governance workflow approvals
-- User authentication
+- Real user authentication (replace MVP Role Switcher)
 - Multi-tenant support
-- Audit trail and versioning
+- Richer audit / versioning beyond `routingHistory`
 - Regulatory framework mapping (NIST AI RMF, ISO 42001, EU AI Act)
 
 ---

@@ -86,7 +86,7 @@ const agentRequestSchema = new Schema(
     /** User ID (email) of who submitted the request. */
     submittedByUserId: { type: String, default: "" },
 
-    /** Specific user ID assigned (for manager routing). */
+    /** Specific user ID assigned (for manager routing — current inbox holder). */
     assignedToUserId: { type: String, default: null },
 
     /** Free-text description of agent's purpose (for CISO context, not auto-approval). */

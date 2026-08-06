@@ -2,7 +2,8 @@
  * Dashboard queue filter presets by role / tab.
  *
  * Keeps tab → API filter mapping in one place so `app/page.tsx` stays thin.
- * CISO history supports sub-filters: all | approved | rejected.
+ * CISO history supports sub-filters: all | approved | auto | rejected.
+ * "Approved" is a dropdown: כל המאושרות | אוטומטי בלבד.
  *
  * @see components/DashboardTabs.tsx - Tab ids/labels
  * @see components/HistoryStatusFilters.tsx - History sub-filter buttons
@@ -22,64 +23,90 @@ export type QueueViewConfig = {
 /** Sub-filter modes for CISO approval history. */
 export const HistoryFilterMode = {
   ALL: "all",
+  /** Manual CISO/manager approval + green-path auto-approval. */
   APPROVED: "approved",
+  /** Green-path AUTO_APPROVED only. */
+  AUTO_APPROVED: "auto",
   REJECTED: "rejected",
 } as const;
 export type HistoryFilterMode =
   (typeof HistoryFilterMode)[keyof typeof HistoryFilterMode];
 
 /** Status lists for each history sub-filter. */
-export const HISTORY_STATUS_BY_MODE: Record<
-  HistoryFilterMode,
-  string[]
-> = {
+export const HISTORY_STATUS_BY_MODE: Record<HistoryFilterMode, string[]> = {
   [HistoryFilterMode.ALL]: [
     RequestStatus.APPROVED,
     RequestStatus.REJECTED,
     RequestStatus.AUTO_APPROVED,
   ],
-  // Manual + green-path approvals
   [HistoryFilterMode.APPROVED]: [
     RequestStatus.APPROVED,
     RequestStatus.AUTO_APPROVED,
   ],
+  [HistoryFilterMode.AUTO_APPROVED]: [RequestStatus.AUTO_APPROVED],
   [HistoryFilterMode.REJECTED]: [RequestStatus.REJECTED],
 };
 
-/** Button meta for history sub-filters (label + which mode it selects). */
-export type HistoryFilterButton = {
-  mode: HistoryFilterMode;
+/** Options inside the "מאושרות" dropdown. */
+export type ApprovedHistoryOption = {
+  mode: typeof HistoryFilterMode.APPROVED | typeof HistoryFilterMode.AUTO_APPROVED;
   label: string;
 };
 
-/**
- * All history filter buttons. UI hides the one matching the current mode.
- *
- * - הכל — full terminal history
- * - מאושרות — APPROVED + AUTO_APPROVED
- * - נדחו — REJECTED only
- */
-export const HISTORY_FILTER_BUTTONS: HistoryFilterButton[] = [
-  { mode: HistoryFilterMode.ALL, label: "הכל" },
-  { mode: HistoryFilterMode.APPROVED, label: "מאושרות" },
-  { mode: HistoryFilterMode.REJECTED, label: "נדחו" },
+export const APPROVED_HISTORY_OPTIONS: ApprovedHistoryOption[] = [
+  { mode: HistoryFilterMode.APPROVED, label: "כל המאושרות" },
+  { mode: HistoryFilterMode.AUTO_APPROVED, label: "אוטומטי בלבד" },
 ];
 
 /**
- * Buttons to show for the current history mode (hides the active selection).
+ * Whether the current mode is one of the approved-family filters.
+ */
+export function isApprovedHistoryMode(mode: HistoryFilterMode): boolean {
+  return (
+    mode === HistoryFilterMode.APPROVED ||
+    mode === HistoryFilterMode.AUTO_APPROVED
+  );
+}
+
+/**
+ * Label for the approved dropdown trigger.
+ * Shows the active approved subtype when that family is selected.
+ */
+export function getApprovedDropdownLabel(current: HistoryFilterMode): string {
+  if (current === HistoryFilterMode.AUTO_APPROVED) return "אוטומטי בלבד";
+  if (current === HistoryFilterMode.APPROVED) return "כל המאושרות";
+  return "מאושרות";
+}
+
+/**
+ * Approved-dropdown options to show (hides the active approved subtype).
  *
  * @param current - Active history sub-filter
  */
-export function getVisibleHistoryFilterButtons(
+export function getVisibleApprovedHistoryOptions(
   current: HistoryFilterMode
-): HistoryFilterButton[] {
-  return HISTORY_FILTER_BUTTONS.filter((b) => b.mode !== current);
+): ApprovedHistoryOption[] {
+  return APPROVED_HISTORY_OPTIONS.filter((o) => o.mode !== current);
+}
+
+/**
+ * Whether to show the top-level "הכל" button.
+ */
+export function showHistoryAllButton(current: HistoryFilterMode): boolean {
+  return current !== HistoryFilterMode.ALL;
+}
+
+/**
+ * Whether to show the top-level "נדחו" button.
+ */
+export function showHistoryRejectedButton(current: HistoryFilterMode): boolean {
+  return current !== HistoryFilterMode.REJECTED;
 }
 
 /**
  * Build the API filter for a history sub-filter mode.
  *
- * @param mode - all | approved | rejected
+ * @param mode - all | approved | auto | rejected
  */
 export function getHistoryFilterOptions(
   mode: HistoryFilterMode
@@ -95,7 +122,9 @@ export function getHistoryFilterOptions(
 export function getHistoryTitle(mode: HistoryFilterMode): string {
   switch (mode) {
     case HistoryFilterMode.APPROVED:
-      return "היסטוריה — מאושרות";
+      return "היסטוריה — כל המאושרות";
+    case HistoryFilterMode.AUTO_APPROVED:
+      return "היסטוריה — אוטומטי בלבד";
     case HistoryFilterMode.REJECTED:
       return "היסטוריה — נדחו";
     default:

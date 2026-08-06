@@ -14,7 +14,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
   throw new Error(
-    "Missing MONGODB_URI. Add it to .env.local (see atlas-credentials.env).",
+    "Missing MONGODB_URI. Add it to .env.local (see .env.example).",
   );
 }
 

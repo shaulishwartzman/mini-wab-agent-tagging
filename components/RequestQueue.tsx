@@ -9,13 +9,13 @@
  *
  * Expanding a card shows metadata plus a read-only questionnaire panel
  * (`RequestAnswersPanel`) so reviewers can inspect all answers before acting.
- *
- * Filter props drive CISO quick filters (pending / active / auto-approved).
- * Multi-status filters are supported via `filter.status` as a string array.
+ * Optional CISO↔manager notes are drafted inside `CorrespondencePanel`
+ * (below questionnaire, above action buttons) and sent as `reviewNotes`.
  *
  * @see lib/api/requests.ts - fetchRequests() for API calls
  * @see components/Pagination.tsx - Pagination controls
  * @see components/RequestAnswersPanel.tsx - Read-only questionnaire answers
+ * @see components/CorrespondencePanel.tsx - Collapsible CISO↔manager thread
  * @see lib/utils/requestHelpers.ts - Status labels and colors
  */
 
@@ -33,6 +33,7 @@ import { UserRole, RequestAction } from "@/lib/types";
 import { useRole } from "@/contexts/RoleContext";
 import { Pagination } from "./Pagination";
 import { RequestAnswersPanel } from "./RequestAnswersPanel";
+import { CorrespondencePanel } from "./CorrespondencePanel";
 import {
   getStatusLabel,
   getStatusBadgeStyle,
@@ -82,6 +83,8 @@ export function RequestQueue({
     requestId: null,
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Optional per-request note drafted before an action (CISO↔manager Q&A). */
+  const [actionNotes, setActionNotes] = useState<Record<string, string>>({});
 
   // Stabilize filter dependency so inline objects from the parent don't
   // retrigger fetch on every render.
@@ -125,16 +128,26 @@ export function RequestQueue({
   ) => {
     setActionState({ loading: true, error: null, requestId });
 
+    const reviewNotes = (actionNotes[requestId] || "").trim();
+
     const result = await applyAction(
       requestId,
       action,
       currentUser.role,
       currentUser.id,
-      { targetUserId }
+      {
+        targetUserId,
+        reviewNotes: reviewNotes || undefined,
+      }
     );
 
     if (result.success) {
       setActionState({ loading: false, error: null, requestId: null });
+      setActionNotes((prev) => {
+        const next = { ...prev };
+        delete next[requestId];
+        return next;
+      });
       loadRequests();
       onActionComplete?.();
     } else {
@@ -423,23 +436,23 @@ export function RequestQueue({
                       )}
                     </div>
 
-                    {request.reviewNotes && (
-                      <div
-                        style={{
-                          padding: "12px",
-                          backgroundColor: "#f1f5f9",
-                          borderRadius: "6px",
-                          marginBottom: "16px",
-                        }}
-                      >
-                        <strong style={{ color: "#64748b", fontSize: "12px" }}>
-                          הערות:
-                        </strong>
-                        <div style={{ marginTop: "4px" }}>{request.reviewNotes}</div>
-                      </div>
-                    )}
-
                     <RequestAnswersPanel answers={request.answers} />
+
+                    <CorrespondencePanel
+                      routingHistory={request.routingHistory}
+                      viewerRole={currentUser.role}
+                      canCompose={
+                        showActions && !isTerminalStatus(request.status)
+                      }
+                      draftNote={actionNotes[request._id] || ""}
+                      onDraftNoteChange={(value) =>
+                        setActionNotes((prev) => ({
+                          ...prev,
+                          [request._id]: value,
+                        }))
+                      }
+                      draftNoteId={`action-notes-${request._id}`}
+                    />
 
                     {hasActionError && (
                       <div
