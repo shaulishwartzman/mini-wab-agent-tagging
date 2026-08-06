@@ -8,7 +8,8 @@
  *
  * DISPLAYS:
  * 1. Questionnaire form for submitting new agent requests
- * 2. "הסוכנים שלך במאגר" - List of user's approved agents
+ * 2. Per-field (?) help tooltips (what it measures + how to find out)
+ * 3. "הסוכנים שלך במאגר" - List of user's approved agents
  *
  * AUTO-APPROVAL INTEGRATION:
  * On submit, loads CISO green-path settings from the API, then evaluates
@@ -16,11 +17,14 @@
  * if settings fetch fails. Eligible → AUTO_APPROVED; else PENDING_CISO.
  *
  * @see lib/auto-approval/rulesEngine.ts - Auto-approval evaluation
+ * @see components/FieldHelpTooltip.tsx - Hover help next to questions
+ * @see components/questionnaire/fields.ts - Field definitions + tooltips
  * @see components/RequestQueue.tsx - For tracking request status (הבקשות שלי tab)
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { fields } from "@/components/questionnaire/fields";
+import { FieldHelpTooltip } from "@/components/FieldHelpTooltip";
 import { createAgentCard } from "@/lib/agent-engine/createAgentCard";
 import { createRequest, fetchRequests, deleteRequest } from "@/lib/api/requests";
 import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
@@ -445,9 +449,13 @@ export default function AgentForm() {
                 fontSize: 15,
                 fontWeight: 600,
                 color: theme.textMain,
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 4,
               }}
             >
-              {q.question_text}
+              <span style={{ flex: 1 }}>{q.question_text}</span>
+              {q.tooltip && <FieldHelpTooltip text={q.tooltip} />}
             </p>
 
             <div

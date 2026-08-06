@@ -121,12 +121,13 @@ app/
 components/
 ├─ AgentForm.tsx               # Assessment form (employees only)
 ├─ DashboardTabs.tsx           # Role-based tab navigation
+├─ FieldHelpTooltip.tsx        # (?) hover help next to questionnaire fields
 ├─ GreenPathSettingsForm.tsx   # CISO checkbox editor for green path
 ├─ Pagination.tsx              # Prev/next pagination controls
 ├─ RequestQueue.tsx            # Paginated request list with actions
 ├─ RoleSwitcher.tsx            # MVP role selector (top banner)
 └─ questionnaire/
-   └─ fields.ts
+   └─ fields.ts                # Questions, options, and field tooltips
 
 lib/
 ├─ agent-engine/
@@ -805,6 +806,17 @@ Response includes pagination metadata:
 | `RequestAnswersPanel` | Read-only questionnaire answers inside expanded cards |
 | `Pagination` | Prev/next controls with page indicator |
 | `AgentForm` | Questionnaire form + approved agents (employee) |
+| `FieldHelpTooltip` | (?) hover help on employee form fields |
+| `questionnaire/fields.ts` | Questions, options, and short ABCM/gov tooltips |
+
+### Questionnaire Field Help (Employee Form)
+
+On **הגשת בקשה**, each question shows a **?** icon. Hover (or focus) reveals a short Hebrew tip:
+
+- **מה זה בוחן?** — what the field measures (ABCM / governance)
+- **איך לברר?** — how to find the answer for the agent being registered
+
+Tooltips live on each field as optional `tooltip` in `components/questionnaire/fields.ts` and are rendered only in `AgentForm` (not in CISO/Manager review views).
 
 ### Read-Only Questionnaire Review (Context Expand)
 
