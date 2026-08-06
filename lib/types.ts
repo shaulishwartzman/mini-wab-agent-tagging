@@ -134,6 +134,8 @@ export type AgentAssessmentPayload = {
   autoApprovalEligible?: boolean;
   /** Reason for auto-approval eligibility or ineligibility. */
   autoApprovalReason?: string;
+  /** If true, request will be created as AUTO_APPROVED (set by rulesEngine). */
+  autoApprove?: boolean;
 };
 
 /**

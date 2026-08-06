@@ -94,3 +94,64 @@ export function isRequestAction(value: unknown): value is RequestActionType {
     Object.values(RequestAction).includes(value as RequestActionType)
   );
 }
+
+/**
+ * Type guard: whether a value is a valid `UserRole`.
+ */
+export function isValidUserRole(value: unknown): value is UserRoleType {
+  return (
+    typeof value === "string" &&
+    Object.values(UserRole).includes(value as UserRoleType)
+  );
+}
+
+/**
+ * Role-based permissions for workflow actions.
+ *
+ * - CISO: Can approve, reject, or route to manager
+ * - MANAGER: Can only recommend (approve/reject) when consulted
+ * - EMPLOYEE: Cannot perform any workflow actions (submit only)
+ */
+const ROLE_PERMISSIONS: Record<UserRoleType, RequestActionType[]> = {
+  [UserRole.CISO]: [
+    RequestAction.APPROVE,
+    RequestAction.REJECT,
+    RequestAction.ROUTE_TO_MANAGER,
+  ],
+  [UserRole.MANAGER]: [
+    RequestAction.RECOMMEND_APPROVE,
+    RequestAction.RECOMMEND_REJECT,
+  ],
+  [UserRole.EMPLOYEE]: [],
+};
+
+/**
+ * Checks if a role is authorized to perform an action.
+ *
+ * @param actorRole - The role of the user attempting the action
+ * @param action - The action being attempted
+ * @returns true if the role can perform the action, false otherwise
+ *
+ * @example
+ * isAuthorizedForAction("CISO", "APPROVE")           // true
+ * isAuthorizedForAction("MANAGER", "APPROVE")        // false
+ * isAuthorizedForAction("MANAGER", "RECOMMEND_APPROVE") // true
+ * isAuthorizedForAction("EMPLOYEE", "APPROVE")       // false
+ */
+export function isAuthorizedForAction(
+  actorRole: UserRoleType,
+  action: RequestActionType,
+): boolean {
+  return ROLE_PERMISSIONS[actorRole]?.includes(action) ?? false;
+}
+
+/**
+ * Gets the list of allowed actions for a given role.
+ * Useful for UI to show/hide action buttons.
+ *
+ * @param role - The user's role
+ * @returns Array of actions the role can perform
+ */
+export function getAllowedActionsForRole(role: UserRoleType): RequestActionType[] {
+  return ROLE_PERMISSIONS[role] ?? [];
+}

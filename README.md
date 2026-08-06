@@ -123,11 +123,13 @@ lib/
 ├─ agent-engine/
 │  └─ createAgentCard.ts       # Build AgentCard from questionnaire answers
 ├─ api/
-│  └─ requests.ts              # Client-side API helpers (createRequest, fetchRequests)
+│  └─ requests.ts              # Client-side API helpers (createRequest, fetchRequests, applyAction)
 ├─ db/
 │  └─ mongodb.ts               # connectDB() — cached Mongoose connection
+├─ errors/
+│  └─ authorization.ts         # Hebrew 403 messages + redirect hints
 ├─ requests/
-│  └─ transitions.ts           # Legal status transition rules
+│  └─ transitions.ts           # Legal status transition + role authorization rules
 └─ types.ts                    # Shared types: AgentCard, RequestStatus, payloads
 
 models/
@@ -149,9 +151,10 @@ Server-side persistence for AI agent assessment requests. The questionnaire UI s
 | --- | --- |
 | `lib/types.ts` | Shared enums: `RequestStatus`, `UserRole`, `RequestAction`, plus `AgentAssessmentPayload` |
 | `lib/db/mongodb.ts` | `connectDB()` — connects using `MONGODB_URI`, caches for Next.js hot reload |
-| `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()` |
+| `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()`, `applyAction()` |
+| `lib/errors/authorization.ts` | Hebrew 403 messages + optional redirects (`getAuthorizationErrorInfo`) |
 | `models/AgentRequest.ts` | Mongoose model (collection: `agent_requests`) |
-| `lib/requests/transitions.ts` | `applyTransition()` — CISO-final state machine; rejects illegal moves |
+| `lib/requests/transitions.ts` | `applyTransition()` — state machine; `isAuthorizedForAction()` — role-based auth |
 | `app/api/requests/route.ts` | Collection: create + list |
 | `app/api/requests/[id]/route.ts` | Item: approve / reject / route / delete |
 
@@ -218,6 +221,7 @@ CISO is the **final decision-maker**. Managers provide **recommendations only** 
 - **Auto-approval is criteria-based** — Green-path uses closed fields only (read-only, human-in-the-loop, etc.)
 - **Free text doesn't block auto-approval** — `agentPurpose` is for audit/context, not approval logic
 - **Terminal = no assignee** — When APPROVED/REJECTED/AUTO_APPROVED, `assignedTo = null`
+- **Role-based authorization** — API enforces `actorRole` must be authorized for the requested action (403 if not)
 
 #### Schema Fields
 
@@ -248,6 +252,125 @@ CISO is the **final decision-maker**. Managers provide **recommendations only** 
 | `autoApprovalEligible` | Boolean | Did request meet green-path criteria? |
 | `autoApprovalReason` | String / null | Why auto-approved or why not eligible |
 | `agentPurpose` | String | Free text description (for CISO context, not auto-approval) |
+
+#### Auto-Approval Engine (Green Path)
+
+The auto-approval engine evaluates requests against hardcoded "green path" criteria. If ALL criteria are met, the request is automatically approved without CISO review.
+
+**Green Path Criteria (all must be met):**
+
+| Question | Required Answer | Meaning |
+| --- | --- | --- |
+| Autonomy (`q1_autonomy`) | `A1` | Human-in-the-loop (controlled, no autonomous decisions) |
+| Architecture (`q2_brain`) | `B1` | Public/SaaS LLM (no internal data exposure) |
+| Capabilities (`q3_capability`) | `C1` | Read-Only (no write permissions) |
+| Management (`q4_management`) | `M1` | Isolated System (single user tool) |
+
+**Required Documentation Fields (must be non-empty):**
+
+| Field | Purpose |
+| --- | --- |
+| `gov_owner` | Accountable manager |
+| `gov_tech` | Technical owner |
+| `gov_approver` | Change approval authority |
+| `gov_monitoring` | Oversight mechanism |
+
+**Disqualifying Conditions:**
+
+- Any answer is `U0` (unknown/undetermined)
+- Any required text field is empty
+- Any closed question answer is not the green-path option
+
+**Why these criteria?**
+
+The green path represents the **lowest-risk agent configuration**:
+- Human always in control (no autonomous decisions)
+- No access to internal/sensitive data
+- Cannot modify any systems (read-only)
+- Single user tool (no multi-agent coordination)
+
+**Implementation:**
+
+```
+lib/auto-approval/
+├── greenPathCriteria.ts   # Hardcoded criteria constants
+└── rulesEngine.ts         # Evaluation function with fail-safe defaults
+
+components/AgentForm.tsx   # Runs evaluateForAutoApproval() on submit
+```
+
+#### Automatic Processing on Submit (onSubmit)
+
+The auto-approval engine runs **automatically** when the user clicks **"שמור בקשה"** — no manual step is required.
+
+```
+User clicks "שמור בקשה"
+                    ↓
+            AgentForm.handleSubmit()
+                    ↓
+      evaluateForAutoApproval(answers)
+                    ↓
+          ┌─────────┴─────────┐
+          ↓                   ↓
+      eligible            not eligible
+          ↓                   ↓
+   autoApprove: true     autoApprove: false
+   AUTO_APPROVED         PENDING_CISO
+   assignedTo: null      assignedTo: CISO
+   approvedBy:
+     SYSTEM_AUTO_APPROVAL
+```
+
+- The form passes `autoApprove`, `autoApprovalEligible`, and `autoApprovalReason` to the API.
+- The API saves the request to MongoDB with the correct status.
+- The UI shows a short user-facing message: **הבקשה אושרה אוטומטית** (green) or **הבקשה נשלחה לאישור** (yellow). Technical status details stay in the DB / API only.
+
+#### Fail-Safe Defaults (מנגנון בטיחות)
+
+The rules engine is designed to be **conservative** - when in doubt, require CISO review:
+
+| Condition | Result |
+| --- | --- |
+| Any deviation from green path | `PENDING_CISO` |
+| Any "לא ידוע" (U0) answer | `PENDING_CISO` |
+| Any required text field empty | `PENDING_CISO` |
+| Any error during evaluation | `PENDING_CISO` |
+| All criteria met | `AUTO_APPROVED` |
+
+**Usage:**
+
+```typescript
+import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
+
+const result = evaluateForAutoApproval(formAnswers);
+
+if (result.eligible) {
+  // AUTO_APPROVED - all green path criteria met
+} else {
+  // PENDING_CISO - result.reason explains why
+  // result.failedCriteria lists specific failures
+}
+```
+
+#### CISO Customization
+
+CISO can expand/narrow/change the green path criteria:
+
+```typescript
+// Example: Allow both A1 (Human-in-loop) AND A2 (Semi-Autonomous)
+const result = evaluateForAutoApproval(formAnswers, {
+  allowedAnswers: {
+    q1_autonomy: ["A1", "A2"],  // Expanded
+  }
+});
+
+// Example: Require only 2 text fields instead of 4
+const result = evaluateForAutoApproval(formAnswers, {
+  requiredTextFields: ["gov_owner", "gov_tech"],
+});
+```
+
+**Note:** Custom criteria UI will be added in the CISO dashboard (future task).
 
 **Routing History Entry:**
 
@@ -294,33 +417,72 @@ curl "http://localhost:3000/api/requests?assignedTo=CISO"
 
 #### `PATCH /api/requests/:id` (or `PUT`)
 
-Apply a workflow action. Body:
+Apply a workflow action with role-based authorization.
+
+**Required fields:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `action` | string | APPROVE, REJECT, ROUTE_TO_MANAGER, RECOMMEND_APPROVE, RECOMMEND_REJECT |
+| `actorRole` | string | Role of the user: CISO, MANAGER, or EMPLOYEE |
+| `actorUserId` | string | User ID performing the action (for audit trail) |
+
+**Optional fields:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `reviewNotes` | string | Note from reviewer |
+| `targetUserId` | string | For ROUTE_TO_MANAGER: which manager to assign |
+
+**Example request body:**
 
 ```json
-{ "action": "APPROVE", "reviewNotes": "Looks good", "actorUserId": "ciso@company.com" }
+{
+  "action": "APPROVE",
+  "actorRole": "CISO",
+  "actorUserId": "ciso@company.com",
+  "reviewNotes": "Looks good"
+}
 ```
 
-**CISO actions:** `APPROVE`, `REJECT`, `ROUTE_TO_MANAGER`
+#### Role-Based Authorization
 
-**Manager actions:** `RECOMMEND_APPROVE`, `RECOMMEND_REJECT`
+The API enforces that only authorized roles can perform specific actions:
 
-Additional fields:
-- `reviewNotes` — optional note from reviewer
-- `actorUserId` — who is performing this action (for audit trail)
-- `targetUserId` — for `ROUTE_TO_MANAGER`: which specific manager to assign
+| Role | Allowed Actions |
+| --- | --- |
+| CISO | APPROVE, REJECT, ROUTE_TO_MANAGER |
+| MANAGER | RECOMMEND_APPROVE, RECOMMEND_REJECT |
+| EMPLOYEE | (none - can only submit requests) |
+
+**Authorization is checked before the state transition** — even if a transition would be valid, the request is rejected if the role is unauthorized.
+
+#### API Response Codes
 
 | Status | Meaning |
 | --- | --- |
 | `200` | Transition applied; returns `{ success: true, request }` |
-| `400` | Invalid action or illegal transition (e.g. approving a `REJECTED` request) |
-| `404` | Unknown id |
+| `400` | Invalid action, missing `actorRole`, or illegal transition |
+| `403` | Role not authorized for this action |
+| `404` | Request not found |
+| `500` | Internal server error |
+
+#### Validation Order
+
+```
+1. Validate action is a known RequestAction        → 400 if invalid
+2. Validate actorRole is a known UserRole          → 400 if invalid/missing
+3. Check role authorization (isAuthorizedForAction) → 403 if unauthorized
+4. Check transition legality (applyTransition)     → 400 if illegal
+5. Apply transition and save                       → 200 on success
+```
 
 **Example: CISO routes to manager**
 
 ```bash
 curl -X PATCH http://localhost:3000/api/requests/<id> \
   -H "Content-Type: application/json" \
-  -d "{\"action\":\"ROUTE_TO_MANAGER\",\"actorUserId\":\"ciso@company.com\",\"targetUserId\":\"manager@company.com\",\"reviewNotes\":\"Need business owner sign-off\"}"
+  -d "{\"action\":\"ROUTE_TO_MANAGER\",\"actorRole\":\"CISO\",\"actorUserId\":\"ciso@company.com\",\"targetUserId\":\"manager@company.com\",\"reviewNotes\":\"Need business owner sign-off\"}"
 ```
 
 **Example: Manager recommends approval**
@@ -328,7 +490,49 @@ curl -X PATCH http://localhost:3000/api/requests/<id> \
 ```bash
 curl -X PATCH http://localhost:3000/api/requests/<id> \
   -H "Content-Type: application/json" \
-  -d "{\"action\":\"RECOMMEND_APPROVE\",\"actorUserId\":\"manager@company.com\",\"reviewNotes\":\"Verified with legal, low risk\"}"
+  -d "{\"action\":\"RECOMMEND_APPROVE\",\"actorRole\":\"MANAGER\",\"actorUserId\":\"manager@company.com\",\"reviewNotes\":\"Verified with legal, low risk\"}"
+```
+
+**Example: Unauthorized action (403 response)**
+
+```bash
+# Manager tries to APPROVE (not allowed)
+curl -X PATCH http://localhost:3000/api/requests/<id> \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"APPROVE\",\"actorRole\":\"MANAGER\",\"actorUserId\":\"manager@company.com\"}"
+
+# Response: 403
+# { "success": false, "error": "Role MANAGER is not authorized to perform APPROVE. Managers can only use RECOMMEND_APPROVE or RECOMMEND_REJECT." }
+```
+
+#### User-Facing Authorization Messages (Hebrew)
+
+Messages live in `lib/errors/authorization.ts` (lookup table by role + action).
+`applyAction()` in `lib/api/requests.ts` maps HTTP 403 to these messages:
+
+| Scenario | Hebrew Message |
+| --- | --- |
+| Employee tries any action | אין לך הרשאה לבצע פעולות על בקשות. רק CISO ומנהלים מורשים יכולים לאשר או לדחות. |
+| Manager tries APPROVE/REJECT | מנהלים יכולים רק להמליץ, לא לאשר או לדחות. השתמש ב״המלץ לאישור״ או ״המלץ לדחייה״. |
+| Manager tries ROUTE_TO_MANAGER | רק CISO יכול להעביר בקשות למנהלים. |
+| CISO tries RECOMMEND_* | CISO לא צריך להמליץ - יש לך הרשאה לאשר או לדחות ישירות. |
+
+**Usage in UI components:**
+
+```typescript
+import { applyAction } from "@/lib/api/requests";
+
+const result = await applyAction(requestId, "APPROVE", "MANAGER", "manager@test.local");
+
+if (!result.success && result.unauthorized) {
+  // Show Hebrew message to user
+  alert(result.userMessage);
+  
+  // Redirect if suggested (e.g., employees go to home)
+  if (result.redirectTo) {
+    router.push(result.redirectTo);
+  }
+}
 ```
 
 ---

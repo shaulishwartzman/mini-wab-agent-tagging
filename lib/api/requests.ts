@@ -12,6 +12,7 @@
  *
  * @see app/api/requests/route.ts - POST/GET endpoints
  * @see app/api/requests/[id]/route.ts - PATCH/DELETE endpoints
+ * @see lib/errors/authorization.ts - Hebrew messages for 403 unauthorized
  */
 
 import type {
@@ -20,6 +21,7 @@ import type {
   RequestAction,
   UserRole,
 } from "@/lib/types";
+import { getAuthorizationErrorInfo } from "@/lib/errors/authorization";
 
 export type { AgentRequestResponse };
 
@@ -133,55 +135,81 @@ export type ApplyActionOptions = {
 };
 
 /**
+ * Extended result type for workflow actions that includes authorization info.
+ * User-facing Hebrew messages come from `lib/errors/authorization.ts`.
+ */
+export type ApplyActionResult = CreateRequestResult & {
+  /** True if the error was due to unauthorized role. */
+  unauthorized?: boolean;
+  /** User-friendly Hebrew message for display. */
+  userMessage?: string;
+  /** Suggested redirect path if user should navigate elsewhere. */
+  redirectTo?: string;
+};
+
+/**
  * Apply a workflow action to a request (approve, reject, route, recommend).
  *
  * This is the main function for driving the approval workflow. Actions are:
  * - CISO: APPROVE, REJECT, ROUTE_TO_MANAGER
  * - Manager: RECOMMEND_APPROVE, RECOMMEND_REJECT
  *
+ * Authorization is enforced by the server. On HTTP 403, messages are resolved
+ * via `getAuthorizationErrorInfo()` from `lib/errors/authorization.ts`.
+ *
  * @param id - The MongoDB _id of the request
  * @param action - The action to apply (from RequestAction enum)
+ * @param actorRole - Role of the user (CISO, MANAGER, EMPLOYEE)
  * @param actorUserId - Who is performing this action (for audit trail)
  * @param options - Optional reviewNotes and targetUserId
- * @returns { success, request } on success, { success: false, error } on fail
+ * @returns { success, request } on success, { success: false, error, unauthorized, userMessage } on fail
  *
  * @example
  * ```ts
- * // CISO approves a request
- * await applyAction(requestId, "APPROVE", "ciso@test.local", {
+ * const result = await applyAction(requestId, "APPROVE", "CISO", "ciso@test.local", {
  *   reviewNotes: "Looks good, approved."
  * });
  *
- * // CISO routes to manager
- * await applyAction(requestId, "ROUTE_TO_MANAGER", "ciso@test.local", {
- *   targetUserId: "manager@test.local",
- *   reviewNotes: "Need business context"
- * });
- *
- * // Manager recommends approval
- * await applyAction(requestId, "RECOMMEND_APPROVE", "manager@test.local", {
- *   reviewNotes: "Verified with legal team"
- * });
+ * if (!result.success && result.unauthorized) {
+ *   alert(result.userMessage);
+ *   if (result.redirectTo) router.push(result.redirectTo);
+ * }
  * ```
  */
 export async function applyAction(
   id: string,
   action: (typeof RequestAction)[keyof typeof RequestAction],
+  actorRole: (typeof UserRole)[keyof typeof UserRole],
   actorUserId: string,
   options?: ApplyActionOptions
-): Promise<CreateRequestResult> {
+): Promise<ApplyActionResult> {
   try {
     const res = await fetch(`/api/requests/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action,
+        actorRole,
         actorUserId,
         reviewNotes: options?.reviewNotes,
         targetUserId: options?.targetUserId,
       }),
     });
-    return await res.json();
+
+    const data = await res.json();
+
+    // Handle 403 Forbidden (unauthorized role)
+    if (res.status === 403) {
+      const errorInfo = getAuthorizationErrorInfo(actorRole, action);
+      return {
+        ...data,
+        unauthorized: true,
+        userMessage: errorInfo.userMessage,
+        redirectTo: errorInfo.redirectTo,
+      };
+    }
+
+    return data;
   } catch {
     return { success: false, error: "Network error" };
   }

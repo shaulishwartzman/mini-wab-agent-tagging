@@ -5,12 +5,23 @@
  * - `PUT    /api/requests/:id` — same behavior as PATCH
  * - `DELETE /api/requests/:id` — remove a request by ID
  *
- * PATCH/PUT Body:
- * - CISO actions: APPROVE, REJECT, ROUTE_TO_MANAGER
- * - Manager actions: RECOMMEND_APPROVE, RECOMMEND_REJECT
+ * PATCH/PUT Body (required fields):
+ * - `action`: APPROVE, REJECT, ROUTE_TO_MANAGER, RECOMMEND_APPROVE, RECOMMEND_REJECT
+ * - `actorRole`: CISO, MANAGER (required for authorization)
+ * - `actorUserId`: User ID performing the action
  *
- * Additional fields: reviewNotes, actorUserId, targetUserId (for routing)
- * Illegal transitions are rejected with HTTP 400 (enforced by `applyTransition`).
+ * Optional fields: reviewNotes, targetUserId (for ROUTE_TO_MANAGER)
+ *
+ * Authorization rules:
+ * - CISO can: APPROVE, REJECT, ROUTE_TO_MANAGER
+ * - MANAGER can: RECOMMEND_APPROVE, RECOMMEND_REJECT
+ * - EMPLOYEE cannot perform any workflow actions
+ *
+ * Error responses:
+ * - 400: Invalid action or missing required fields
+ * - 403: Role not authorized for this action
+ * - 404: Request not found
+ * - 500: Internal server error
  */
 
 import { NextResponse } from "next/server";
@@ -19,8 +30,10 @@ import AgentRequest from "@/models/AgentRequest";
 import {
   applyTransition,
   isRequestAction,
+  isValidUserRole,
+  isAuthorizedForAction,
 } from "@/lib/requests/transitions";
-import { RequestAction, RequestStatus, UserRole, type ManagerRecommendation } from "@/lib/types";
+import { RequestAction, RequestStatus, UserRole, type ManagerRecommendation, type UserRole as UserRoleType } from "@/lib/types";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -28,6 +41,7 @@ type RouteContext = {
 
 type TransitionBody = {
   action?: unknown;
+  actorRole?: unknown;
   reviewNotes?: string;
   actorUserId?: string;
   targetUserId?: string;
@@ -35,15 +49,22 @@ type TransitionBody = {
 
 /**
  * Shared handler for PATCH and PUT: load request, apply transition, save.
- * Handles audit fields: approvedBy, resolvedAt, managerRecommendation, routingHistory.
  *
- * @returns Updated request, or 400 / 404 / 500 error payload
+ * Validation order:
+ * 1. Validate action is a known RequestAction
+ * 2. Validate actorRole is a known UserRole
+ * 3. Check role authorization (403 if unauthorized)
+ * 4. Check transition legality (400 if illegal)
+ * 5. Apply transition and audit fields
+ *
+ * @returns Updated request, or 400 / 403 / 404 / 500 error payload
  */
 async function updateRequestStatus(req: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
     const body: TransitionBody = await req.json();
 
+    // Step 1: Validate action
     if (!isRequestAction(body.action)) {
       return NextResponse.json(
         {
@@ -52,6 +73,34 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
             "Invalid or missing action. Allowed: APPROVE, REJECT, ROUTE_TO_MANAGER, RECOMMEND_APPROVE, RECOMMEND_REJECT",
         },
         { status: 400 },
+      );
+    }
+
+    // Step 2: Validate actorRole is provided and valid
+    if (!isValidUserRole(body.actorRole)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid or missing actorRole. Must be one of: CISO, MANAGER, EMPLOYEE",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Step 3: Check role authorization
+    if (!isAuthorizedForAction(body.actorRole, body.action)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Role ${body.actorRole} is not authorized to perform ${body.action}. ` +
+            (body.actorRole === UserRole.EMPLOYEE
+              ? "Employees cannot perform workflow actions."
+              : body.actorRole === UserRole.MANAGER
+                ? "Managers can only use RECOMMEND_APPROVE or RECOMMEND_REJECT."
+                : "CISO can use APPROVE, REJECT, or ROUTE_TO_MANAGER."),
+        },
+        { status: 403 },
       );
     }
 
@@ -69,6 +118,7 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
     const previousStatus = request.status;
     const previousAssignedToUserId = request.assignedToUserId;
 
+    // Step 4: Check transition legality (status-based)
     const result = applyTransition(
       request.status as RequestStatus,
       body.action,
@@ -81,6 +131,7 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
       );
     }
 
+    // Step 5: Apply transition
     request.status = result.status;
     request.assignedTo = result.assignedTo;
 
@@ -90,7 +141,7 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
 
     const isTerminal = result.status === RequestStatus.APPROVED || result.status === RequestStatus.REJECTED;
     const actorUserId = body.actorUserId || "unknown";
-    const actorRole = previousStatus === RequestStatus.PENDING_MANAGER ? UserRole.MANAGER : UserRole.CISO;
+    const actorRole: UserRoleType = body.actorRole;
 
     if (isTerminal) {
       request.approvedBy = actorUserId;

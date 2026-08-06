@@ -5,6 +5,13 @@
  *
  * Collects questionnaire answers, generates a governance/risk card via
  * createAgentCard, and persists to MongoDB via /api/requests.
+ *
+ * AUTO-APPROVAL INTEGRATION:
+ * On submit, the form evaluates answers against green-path criteria using
+ * evaluateForAutoApproval(). If all criteria are met, the request is
+ * auto-approved. Otherwise, it goes to PENDING_CISO for manual review.
+ *
+ * @see lib/auto-approval/rulesEngine.ts - Auto-approval evaluation
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -16,6 +23,8 @@ import {
   deleteRequest,
   type AgentRequestResponse,
 } from "@/lib/api/requests";
+import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
+import { useRole } from "@/contexts/RoleContext";
 import type { AgentCard } from "@/lib/types";
 
 const theme = {
@@ -236,6 +245,7 @@ function RenderPrettyCard({
 }
 
 export default function AgentForm() {
+  const { currentUser } = useRole();
   const [agentName, setAgentName] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<AgentCard | null>(null);
@@ -248,6 +258,9 @@ export default function AgentForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [autoApprovalEligible, setAutoApprovalEligible] = useState<boolean | null>(
+    null
+  );
 
   /** Load agents from MongoDB on mount. */
   const loadAgents = useCallback(async () => {
@@ -277,19 +290,26 @@ export default function AgentForm() {
     setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  /** Submit form: create card, POST to API, refresh list. */
+  /** Submit form: evaluate for auto-approval, create card, POST to API, refresh list. */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     setSuccessMsg(null);
+    setAutoApprovalEligible(null);
 
+    // Step 1: Evaluate for auto-approval using the rules engine
+    const evaluation = evaluateForAutoApproval(answers);
+    setAutoApprovalEligible(evaluation.eligible);
+
+    // Step 2: Create the agent card
     const card = createAgentCard({
       agentName,
       answers,
       fields,
     });
 
+    // Step 3: Submit to API with auto-approval info
     const res = await createRequest({
       agentName: card.agentName,
       answers,
@@ -298,11 +318,19 @@ export default function AgentForm() {
       classificationExplanation: card.classificationExplanation,
       governance: card.governance,
       riskScenarios: card.riskScenarios,
+      submittedByUserId: currentUser.id,
+      autoApprove: evaluation.eligible,
+      autoApprovalEligible: evaluation.eligible,
+      autoApprovalReason: evaluation.reason,
     });
 
     if (res.success && res.request) {
       setResult(toAgentCard(res.request));
-      setSuccessMsg("הבקשה נשמרה בהצלחה במסד הנתונים");
+      if (evaluation.eligible) {
+        setSuccessMsg("הבקשה אושרה אוטומטית");
+      } else {
+        setSuccessMsg("הבקשה נשלחה לאישור");
+      }
       await loadAgents();
       setAgentName("");
       setAnswers({});
@@ -505,13 +533,16 @@ export default function AgentForm() {
             style={{
               padding: 12,
               borderRadius: 8,
-              backgroundColor: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              color: theme.success,
+              backgroundColor: autoApprovalEligible ? "#f0fdf4" : "#fefce8",
+              border: autoApprovalEligible
+                ? "1px solid #bbf7d0"
+                : "1px solid #fde047",
+              color: autoApprovalEligible ? theme.success : "#ca8a04",
               fontSize: 14,
+              fontWeight: 600,
             }}
           >
-            {successMsg}
+            {autoApprovalEligible ? "✓" : "⏳"} {successMsg}
           </div>
         )}
 
