@@ -76,6 +76,9 @@ export async function createRequest(
 
 /**
  * Options for filtering and paginating requests.
+ *
+ * `status` accepts a single status string or an array (joined as comma-separated
+ * for the API `$in` query). Use an array for CISO "active requests" views.
  */
 export type FetchRequestsOptions = {
   /** Filter by role inbox (MANAGER, CISO). */
@@ -84,8 +87,8 @@ export type FetchRequestsOptions = {
   assignedToUserId?: string;
   /** Filter by who submitted the request (for "my requests" view). */
   submittedByUserId?: string;
-  /** Filter by request status. */
-  status?: string;
+  /** Filter by one status, or several (OR / `$in`). */
+  status?: string | string[];
   /** Page number (default 1). */
   page?: number;
   /** Items per page (default 10, max 50). */
@@ -100,24 +103,16 @@ export type FetchRequestsOptions = {
  *
  * @example
  * ```ts
- * // Fetch all requests (first page)
- * const all = await fetchRequests();
+ * // CISO inbox — needs action now
+ * const mine = await fetchRequests({ assignedTo: "CISO" });
  *
- * // Fetch CISO inbox
- * const cisoInbox = await fetchRequests({ assignedTo: "CISO" });
- *
- * // Fetch my submitted requests with pagination
- * const myRequests = await fetchRequests({
- *   submittedByUserId: "employee@test.local",
- *   page: 2,
- *   limit: 10,
+ * // Active / open pipeline (pending CISO or manager)
+ * const active = await fetchRequests({
+ *   status: ["PENDING_CISO", "PENDING_MANAGER"],
  * });
  *
- * // Fetch manager's assigned requests
- * const managerQueue = await fetchRequests({
- *   assignedTo: "MANAGER",
- *   assignedToUserId: "manager@test.local",
- * });
+ * // Auto-approved rollup
+ * const green = await fetchRequests({ status: "AUTO_APPROVED" });
  * ```
  */
 export async function fetchRequests(
@@ -136,7 +131,10 @@ export async function fetchRequests(
       params.set("submittedByUserId", options.submittedByUserId);
     }
     if (options?.status) {
-      params.set("status", options.status);
+      const statusValue = Array.isArray(options.status)
+        ? options.status.join(",")
+        : options.status;
+      params.set("status", statusValue);
     }
     if (options?.page) {
       params.set("page", String(options.page));

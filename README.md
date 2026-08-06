@@ -138,6 +138,7 @@ lib/
 ├─ requests/
 │  └─ transitions.ts           # Legal status transition + role authorization rules
 ├─ utils/
+│  ├─ dashboardFilters.ts      # CISO tab → queue filter presets
 │  └─ requestHelpers.ts        # Status labels, colors, card conversion helpers
 └─ types.ts                    # Shared types: AgentCard, RequestStatus, payloads
 
@@ -166,6 +167,7 @@ Server-side persistence for AI agent assessment requests. The questionnaire UI s
 | `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()`, `applyAction()` with pagination |
 | `lib/errors/authorization.ts` | Hebrew 403 messages + optional redirects (`getAuthorizationErrorInfo`) |
 | `lib/utils/requestHelpers.ts` | Status labels, badge colors, card conversion utilities |
+| `lib/utils/dashboardFilters.ts` | CISO queue view presets (`getCisoQueueView`) |
 | `models/AgentRequest.ts` | Mongoose model (collection: `agent_requests`) |
 | `lib/requests/transitions.ts` | `applyTransition()` — state machine; `isAuthorizedForAction()` — role-based auth |
 | `app/api/requests/route.ts` | Collection: create + list with pagination |
@@ -734,21 +736,48 @@ Role-based dashboard with paginated request queues. Different roles see differen
 
 ### Role-Based Views
 
-| Role | Default Tab | Tab 1 | Tab 2 |
-| --- | --- | --- | --- |
-| EMPLOYEE | Form | הגשת בקשה (questionnaire) | הבקשות שלי (my requests) |
-| MANAGER | Pending queue | ממתין להמלצתי (pending for me) | — (reviewer only in MVP) |
-| CISO | Pending queue | ממתין לאישור (pending approval) | כל הבקשות (all requests) |
+| Role | Default Tab | Tabs |
+| --- | --- | --- |
+| EMPLOYEE | Form | הגשת בקשה \| הבקשות שלי |
+| MANAGER | Pending queue | ממתין להמלצתי only (reviewer in MVP) |
+| CISO | ממתין לטיפולי | ממתין לטיפולי \| בקשות פעילות \| היסטוריית אישורים |
 
 **Key UX Rules:**
 - Only employees see the questionnaire form
-- Manager is a reviewer only in MVP (no form, no "my requests")
-- CISO defaults to the pending approval queue (no form)
-- All queues are paginated (10 items per page)
+- Manager is a reviewer only in MVP (no form, no "my requests", no org-wide history)
+- CISO gets quick filter tabs for oversight (CISO-only)
+- All queues are paginated (10 items per page, prev/next)
+
+### CISO Quick Filters
+
+CISO-only navigation for queue management. Manager does **not** see these filters.
+
+| Tab | Meaning | API Filter |
+| --- | --- | --- |
+| ממתין לטיפולי | Needs CISO action **now** | `assignedTo=CISO` |
+| בקשות פעילות | Open pipeline (still in flight) | `status=PENDING_CISO,PENDING_MANAGER` |
+| היסטוריית אישורים | Fully resolved requests | `status=APPROVED,REJECTED,AUTO_APPROVED` |
+
+Presets live in `lib/utils/dashboardFilters.ts` (`CISO_QUEUE_VIEWS` / `getCisoQueueView()`).
+
+**History notes:**
+- Includes manual approvals, rejections, and green-path `AUTO_APPROVED` (all terminal)
+- View-only (`showActions: false`) — no approve/reject/route on history cards
+- Sub-filters (active mode is hidden from the button row):
+  - **הכל** — `APPROVED,REJECTED,AUTO_APPROVED`
+  - **מאושרות** — `APPROVED,AUTO_APPROVED`
+  - **נדחו** — `REJECTED`
+- Helpers: `getHistoryFilterOptions`, `getVisibleHistoryFilterButtons`, `HistoryStatusFilters`
+
+**Hub & Spoke behavior:**
+- When CISO routes a request to a manager → it **leaves** ממתין לטיפולי (`assignedTo` becomes MANAGER)
+- It **stays** in בקשות פעילות (`PENDING_MANAGER` is still active)
+- After the manager recommends → it **returns** to ממתין לטיפולי (`PENDING_CISO` + `assignedTo=CISO`)
+- After final APPROVE/REJECT (or auto-approve on create) → appears in היסטוריית אישורים
 
 ### Pagination API
 
-The `GET /api/requests` endpoint now supports pagination and additional filters:
+The `GET /api/requests` endpoint supports pagination and filters:
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -757,7 +786,20 @@ The `GET /api/requests` endpoint now supports pagination and additional filters:
 | `assignedTo` | string | — | Filter by role inbox (CISO, MANAGER) |
 | `assignedToUserId` | string | — | Filter by specific user assignment |
 | `submittedByUserId` | string | — | Filter by who submitted (for "my requests") |
-| `status` | string | — | Filter by request status |
+| `status` | string | — | Single status, or comma-separated list (`$in`) |
+
+Examples:
+
+```bash
+# CISO inbox
+GET /api/requests?assignedTo=CISO
+
+# Active / open requests
+GET /api/requests?status=PENDING_CISO,PENDING_MANAGER
+
+# Approval history (terminal statuses)
+GET /api/requests?status=APPROVED,REJECTED,AUTO_APPROVED
+```
 
 Response includes pagination metadata:
 
@@ -776,22 +818,42 @@ Response includes pagination metadata:
 
 ### Components
 
-| Component | Purpose |
+| Component / Module | Purpose |
 | --- | --- |
-| `DashboardTabs` | Role-based tab navigation |
+| `DashboardTabs` | Role-based tab navigation (includes CISO quick filters) |
+| `lib/utils/dashboardFilters.ts` | CISO tab → API filter presets (`getCisoQueueView`, history sub-filters) |
+| `HistoryStatusFilters` | History buttons: הכל / מאושרות / נדחו (hides active mode) |
 | `RequestQueue` | Paginated request list with role-specific actions |
+| `RequestAnswersPanel` | Read-only questionnaire answers inside expanded cards |
 | `Pagination` | Prev/next controls with page indicator |
-| `AgentForm` | Questionnaire form (employee submission only) |
+| `AgentForm` | Questionnaire form + approved agents (employee) |
+
+### Read-Only Questionnaire Review (Context Expand)
+
+Inside an expanded request card, questionnaire answers are behind a toggle:
+
+- **▼ תשובות השאלון (קריאה בלבד)** — expand all answers
+- **▲ הסתר תשובות השאלון** — collapse again
+- Closed (radio) answers mapped to Hebrew option labels
+- Free-text governance fields (`gov_*`) as raw text from MongoDB
+- No edit controls — review only, before Approve / Recommend actions
+
+Helpers live in `lib/utils/requestHelpers.ts`:
+- `getReadableAnswer()` — option id → label (or raw free text)
+- `getQuestionnaireAnswerRows()` — ordered Q&A rows for the panel
+
+This fulfills the “context panel” review need via card expansion + answers toggle (no separate modal in MVP).
 
 ### Filter Logic per Tab
 
 | Tab | API Filter | Shows |
 | --- | --- | --- |
-| הגשת בקשה (employee) | `submittedByUserId` + status=APPROVED/AUTO_APPROVED | Form + approved agents |
-| הבקשות שלי (employee) | `submittedByUserId = currentUser.id` | All request statuses (pending, rejected, etc.) |
-| ממתין להמלצתי (manager) | `assignedTo = MANAGER` + `assignedToUserId = currentUser.id` | Pending recommendations |
-| ממתין לאישור (CISO) | `assignedTo = CISO` | Pending approvals |
-| כל הבקשות (CISO) | No filter (all requests) | Full request history |
+| הגשת בקשה (employee) | approved agents for current user | Form + approved agents |
+| הבקשות שלי (employee) | `submittedByUserId = currentUser.id` | All request statuses |
+| ממתין להמלצתי (manager) | `assignedTo=MANAGER` + `assignedToUserId` | Pending recommendations |
+| ממתין לטיפולי (CISO) | `assignedTo=CISO` | Needs CISO action |
+| בקשות פעילות (CISO) | `PENDING_CISO,PENDING_MANAGER` | Open pipeline |
+| היסטוריית אישורים (CISO) | `APPROVED,REJECTED,AUTO_APPROVED` | Finished requests (paginated) |
 
 ### Shared Helpers
 

@@ -4,11 +4,15 @@
  * Role-based dashboard with conditional content:
  * - EMPLOYEE: Form + My Requests
  * - MANAGER: Pending Recommendations only (MVP reviewer role)
- * - CISO: Pending Approvals + All Requests
+ * - CISO: Quick filter tabs —
+ *   ממתין לטיפולי | בקשות פעילות | היסטוריית אישורים
+ *   History supports sub-filters: הכל / מאושרות / נדחו
  *
  * @see components/RoleSwitcher.tsx - Role switching UI (MVP testing)
  * @see components/DashboardTabs.tsx - Tab navigation
+ * @see components/HistoryStatusFilters.tsx - History sub-filter buttons
  * @see components/RequestQueue.tsx - Request lists with pagination
+ * @see lib/utils/dashboardFilters.ts - CISO queue filter presets
  * @see components/AgentForm.tsx - Questionnaire form (employees only)
  */
 
@@ -18,19 +22,38 @@ import { useState, useEffect } from "react";
 import AgentForm from "@/components/AgentForm";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { DashboardTabs, getDefaultTab } from "@/components/DashboardTabs";
+import { HistoryStatusFilters } from "@/components/HistoryStatusFilters";
 import { RequestQueue } from "@/components/RequestQueue";
 import { useRole } from "@/contexts/RoleContext";
 import { UserRole } from "@/lib/types";
+import {
+  HistoryFilterMode,
+  getCisoQueueView,
+  getHistoryFilterOptions,
+  getHistoryTitle,
+  type HistoryFilterMode as HistoryFilterModeType,
+} from "@/lib/utils/dashboardFilters";
 
 export default function Page() {
   const { currentUser } = useRole();
   const [activeTab, setActiveTab] = useState(() =>
     getDefaultTab(currentUser.role)
   );
+  const [historyMode, setHistoryMode] = useState<HistoryFilterModeType>(
+    HistoryFilterMode.ALL
+  );
 
   useEffect(() => {
     setActiveTab(getDefaultTab(currentUser.role));
+    setHistoryMode(HistoryFilterMode.ALL);
   }, [currentUser.role]);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    if (tabId === "history") {
+      setHistoryMode(HistoryFilterMode.ALL);
+    }
+  };
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: "#ffffff",
@@ -82,21 +105,29 @@ export default function Page() {
     }
 
     if (role === UserRole.CISO) {
-      if (activeTab === "pending") {
+      if (activeTab === "history") {
         return (
-          <RequestQueue
-            filter={{ assignedTo: UserRole.CISO }}
-            title="ממתין לאישור"
-            showActions={true}
-          />
+          <>
+            <HistoryStatusFilters
+              current={historyMode}
+              onChange={setHistoryMode}
+            />
+            <RequestQueue
+              filter={getHistoryFilterOptions(historyMode)}
+              title={getHistoryTitle(historyMode)}
+              showActions={false}
+            />
+          </>
         );
       }
-      if (activeTab === "all-requests") {
+
+      const view = getCisoQueueView(activeTab);
+      if (view) {
         return (
           <RequestQueue
-            filter={{}}
-            title="כל הבקשות"
-            showActions={true}
+            filter={view.filter}
+            title={view.title}
+            showActions={view.showActions}
           />
         );
       }
@@ -130,7 +161,7 @@ export default function Page() {
 
             <DashboardTabs
               currentTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={handleTabChange}
               role={currentUser.role}
             />
 

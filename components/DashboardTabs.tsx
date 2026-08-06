@@ -4,11 +4,17 @@
  * Shows different tabs based on the current user's role:
  * - EMPLOYEE: "הגשת בקשה" (form) | "הבקשות שלי" (my requests)
  * - MANAGER: "ממתין להמלצתי" (pending queue only — MVP reviewer role)
- * - CISO: "ממתין לאישור" (pending) | "כל הבקשות" (all)
+ * - CISO: filter navigation for oversight queues:
+ *   - ממתין לטיפולי — needs CISO action now (`assignedTo=CISO`)
+ *   - בקשות פעילות — open pipeline (`PENDING_CISO` + `PENDING_MANAGER`)
+ *   - היסטוריית אישורים — terminal requests (`APPROVED` | `REJECTED` | `AUTO_APPROVED`)
+ *
+ * Removed (replaced by history): כל הבקשות, אושרו אוטומטית.
  *
  * Key UX rule: Only employees see the form. Manager/CISO see queues by default.
  *
  * @see app/page.tsx - Main consumer
+ * @see lib/utils/dashboardFilters.ts - CISO tab → API filter mapping
  */
 
 "use client";
@@ -25,6 +31,8 @@ export type Tab = {
 
 /**
  * Tabs configuration per role.
+ *
+ * CISO tabs are quick filters (not separate pages). Manager stays single-queue.
  */
 export const TABS_BY_ROLE: Record<string, Tab[]> = {
   [UserRole.EMPLOYEE]: [
@@ -35,13 +43,17 @@ export const TABS_BY_ROLE: Record<string, Tab[]> = {
     { id: "pending", label: "ממתין להמלצתי" },
   ],
   [UserRole.CISO]: [
-    { id: "pending", label: "ממתין לאישור" },
-    { id: "all-requests", label: "כל הבקשות" },
+    { id: "pending", label: "ממתין לטיפולי" },
+    { id: "active", label: "בקשות פעילות" },
+    { id: "history", label: "היסטוריית אישורים" },
   ],
 };
 
 /**
  * Get the default tab for a role.
+ *
+ * @param role - Current user role string
+ * @returns First tab id for that role
  */
 export function getDefaultTab(role: string): string {
   const tabs = TABS_BY_ROLE[role];
@@ -82,10 +94,11 @@ export function DashboardTabs({
     borderBottom: "2px solid #e2e8f0",
     marginBottom: "24px",
     direction: "rtl",
+    flexWrap: "wrap",
   };
 
   const tabStyle = (isActive: boolean): React.CSSProperties => ({
-    padding: "12px 24px",
+    padding: "12px 20px",
     border: "none",
     borderBottom: isActive ? "2px solid #3b82f6" : "2px solid transparent",
     marginBottom: "-2px",

@@ -8,7 +8,7 @@
  * - `assignedTo` — filter by role inbox (CISO, MANAGER)
  * - `assignedToUserId` — filter by specific user (for manager routing)
  * - `submittedByUserId` — filter by submitter (for "my requests")
- * - `status` — filter by request status
+ * - `status` — single status or comma-separated list (e.g. PENDING_CISO,PENDING_MANAGER)
  * - `page` — page number (default 1)
  * - `limit` — items per page (default 10, max 50)
  *
@@ -110,9 +110,15 @@ export async function POST(req: Request) {
  * - `assignedTo` — filter by role inbox (EMPLOYEE | MANAGER | CISO)
  * - `assignedToUserId` — filter by specific user assignment (for manager routing)
  * - `submittedByUserId` — filter by who submitted the request
- * - `status` — filter by request status
+ * - `status` — single status, or comma-separated list for `$in` match
+ *   (e.g. `PENDING_CISO,PENDING_MANAGER` for active/open requests)
  * - `page` — page number (default: 1)
  * - `limit` — items per page (default: 10, max: 50)
+ *
+ * Used by CISO dashboard filters:
+ * - ממתין לטיפולי → `assignedTo=CISO`
+ * - בקשות פעילות → `status=PENDING_CISO,PENDING_MANAGER`
+ * - אושרו אוטומטית → `status=AUTO_APPROVED`
  *
  * @returns `{ success, requests, pagination }` or `400` / `500` error payload
  */
@@ -132,7 +138,8 @@ export async function GET(req: Request) {
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "10", 10)));
 
-    const filter: Record<string, string | null> = {};
+    // Mongo filter may include `$in` for multi-status queries
+    const filter: Record<string, unknown> = {};
 
     // Validate and apply assignedTo filter
     if (assignedTo) {
@@ -158,18 +165,26 @@ export async function GET(req: Request) {
       filter.submittedByUserId = submittedByUserId;
     }
 
-    // Validate and apply status filter
+    // Validate and apply status filter (single value or comma-separated list)
     if (status) {
-      if (!isRequestStatus(status)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Invalid status. Allowed: ${Object.values(RequestStatus).join(", ")}`,
-          },
-          { status: 400 },
-        );
+      const statuses = status
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      for (const s of statuses) {
+        if (!isRequestStatus(s)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Invalid status "${s}". Allowed: ${Object.values(RequestStatus).join(", ")}`,
+            },
+            { status: 400 },
+          );
+        }
       }
-      filter.status = status;
+
+      filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
     }
 
     // Get total count for pagination

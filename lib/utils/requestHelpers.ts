@@ -5,13 +5,15 @@
  * - Converting API responses to UI card shape
  * - Status labels in Hebrew
  * - Status badge colors
+ * - Read-only questionnaire answer resolution (for CISO/Manager review)
  *
  * @see components/RequestQueue.tsx - Main consumer
- * @see components/AgentForm.tsx - Legacy consumer (form submission)
+ * @see components/AgentForm.tsx - Form submission + approved agents
  */
 
 import { RequestStatus, type AgentCard } from "@/lib/types";
 import type { AgentRequestResponse } from "@/lib/api/requests";
+import { fields } from "@/components/questionnaire/fields";
 
 export type { AgentCard };
 
@@ -31,6 +33,58 @@ export function toAgentCard(res: AgentRequestResponse): AgentCard {
     governance: res.governance,
     riskScenarios: res.riskScenarios,
   };
+}
+
+/**
+ * Resolve a stored answer value to a human-readable label.
+ *
+ * For radio questions, maps option_id → option label.
+ * For free-text questions, returns the raw text as stored in MongoDB.
+ *
+ * @param questionId - Questionnaire field id (e.g. q1_autonomy, gov_owner)
+ * @param value - Stored answer (option id or free text)
+ * @returns Display string for read-only review UI
+ */
+export function getReadableAnswer(
+  questionId: string,
+  value: string | undefined
+): string {
+  if (!value) return "—";
+  const field = fields.find((f) => f.question_id === questionId);
+  if (!field) return value;
+  if (field.type === "text") return value;
+  const option = field.options?.find((o) => o.option_id === value);
+  return option ? option.label : value;
+}
+
+/** One row in the read-only questionnaire review panel. */
+export type QuestionnaireAnswerRow = {
+  questionId: string;
+  questionText: string;
+  answerDisplay: string;
+  /** True for free-text governance fields. */
+  isFreeText: boolean;
+};
+
+/**
+ * Build ordered, read-only rows for all questionnaire fields from stored answers.
+ *
+ * Used by RequestQueue expand panel so CISO/Manager can review the submission
+ * without editing. Free-text values are shown as raw text from the DB.
+ *
+ * @param answers - Raw answers map from AgentRequest
+ * @returns Ordered list of question + display answer rows
+ */
+export function getQuestionnaireAnswerRows(
+  answers: Record<string, string> | undefined
+): QuestionnaireAnswerRow[] {
+  const map = answers ?? {};
+  return fields.map((field) => ({
+    questionId: field.question_id,
+    questionText: field.question_text,
+    answerDisplay: getReadableAnswer(field.question_id, map[field.question_id]),
+    isFreeText: field.type === "text",
+  }));
 }
 
 /**
@@ -117,11 +171,12 @@ export function getStatusBadgeStyle(status: string): StatusBadgeStyle {
  * @returns true if APPROVED, REJECTED, or AUTO_APPROVED
  */
 export function isTerminalStatus(status: string): boolean {
-  return [
+  const terminal: string[] = [
     RequestStatus.APPROVED,
     RequestStatus.REJECTED,
     RequestStatus.AUTO_APPROVED,
-  ].includes(status as RequestStatus);
+  ];
+  return terminal.includes(status);
 }
 
 /**

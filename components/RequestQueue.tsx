@@ -7,8 +7,15 @@
  * - Manager: Recommend Approve, Recommend Reject
  * - Employee: View only (no actions)
  *
+ * Expanding a card shows metadata plus a read-only questionnaire panel
+ * (`RequestAnswersPanel`) so reviewers can inspect all answers before acting.
+ *
+ * Filter props drive CISO quick filters (pending / active / auto-approved).
+ * Multi-status filters are supported via `filter.status` as a string array.
+ *
  * @see lib/api/requests.ts - fetchRequests() for API calls
  * @see components/Pagination.tsx - Pagination controls
+ * @see components/RequestAnswersPanel.tsx - Read-only questionnaire answers
  * @see lib/utils/requestHelpers.ts - Status labels and colors
  */
 
@@ -25,6 +32,7 @@ import {
 import { UserRole, RequestAction } from "@/lib/types";
 import { useRole } from "@/contexts/RoleContext";
 import { Pagination } from "./Pagination";
+import { RequestAnswersPanel } from "./RequestAnswersPanel";
 import {
   getStatusLabel,
   getStatusBadgeStyle,
@@ -75,12 +83,22 @@ export function RequestQueue({
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Stabilize filter dependency so inline objects from the parent don't
+  // retrigger fetch on every render.
+  const filterKey = JSON.stringify(filter);
+
+  // Reset to first page whenever the filter changes (tab switch).
+  useEffect(() => {
+    setPage(1);
+  }, [filterKey]);
+
   const loadRequests = useCallback(async () => {
     setLoading(true);
     setError(null);
 
+    const parsedFilter = JSON.parse(filterKey) as FetchRequestsOptions;
     const result = await fetchRequests({
-      ...filter,
+      ...parsedFilter,
       page,
       limit: pageSize,
     });
@@ -94,7 +112,7 @@ export function RequestQueue({
     }
 
     setLoading(false);
-  }, [filter, page, pageSize]);
+  }, [filterKey, page, pageSize]);
 
   useEffect(() => {
     loadRequests();
@@ -420,6 +438,8 @@ export function RequestQueue({
                         <div style={{ marginTop: "4px" }}>{request.reviewNotes}</div>
                       </div>
                     )}
+
+                    <RequestAnswersPanel answers={request.answers} />
 
                     {hasActionError && (
                       <div
