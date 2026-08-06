@@ -19,6 +19,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import AgentForm from "@/components/AgentForm";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { DashboardTabs, getDefaultTab } from "@/components/DashboardTabs";
@@ -157,7 +158,37 @@ export default function Page() {
       >
         <div style={{ width: "100%", display: "grid", gap: "40px" }}>
           <section style={cardStyle}>
-            <h2 style={titleStyle}>Agent Approval Management</h2>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 16,
+                flexWrap: "wrap",
+                marginBottom: 8,
+              }}
+            >
+              <h2 style={{ ...titleStyle, margin: 0 }}>
+                Agent Approval Management
+              </h2>
+              {currentUser.role === UserRole.CISO && (
+                <Link
+                  href="/green-path"
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "#f8fafc",
+                    color: "#1e40af",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  הגדרות נתיב ירוק
+                </Link>
+              )}
+            </div>
 
             <DashboardTabs
               currentTab={activeTab}

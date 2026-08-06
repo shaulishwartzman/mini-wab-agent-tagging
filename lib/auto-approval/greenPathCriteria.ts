@@ -1,93 +1,114 @@
 /**
  * Green Path Criteria for Auto-Approval Engine.
  *
- * PURPOSE: Defines the hardcoded criteria that determine whether an agent
+ * PURPOSE: Defines default criteria that determine whether an agent
  * assessment request qualifies for automatic approval without CISO review.
  *
  * BUSINESS LOGIC:
  * A request is auto-approved ONLY if ALL conditions are met:
- * 1. All closed questions (A-B-C-M) match GREEN_PATH_ANSWERS exactly
+ * 1. All closed questions (A-B-C-M) match allowed answers
  * 2. All REQUIRED_TEXT_FIELDS are non-empty (for documentation/audit)
  * 3. No answers are DISQUALIFYING_ANSWER (U0 = unknown)
  *
- * If ANY condition fails, the request goes to PENDING_CISO for manual review.
+ * CISO can customize allowed closed answers via /green-path (MongoDB).
+ * Defaults below are used when no settings exist or fetch fails (fail-safe).
  *
- * NOTE: These criteria are hardcoded (no admin UI) per MVP specification.
- * Changes to criteria require code deployment.
- *
- * @see lib/auto-approval/rulesEngine.ts - Evaluation function (next task)
+ * @see lib/auto-approval/rulesEngine.ts - Evaluation function
+ * @see app/green-path/page.tsx - CISO settings UI
  * @see components/questionnaire/fields.ts - Question definitions
  */
 
 /**
- * Required answers for the "green path" auto-approval.
+ * Required answers for the default "green path" auto-approval.
  *
- * These represent the lowest-risk configuration:
- * - A1: Human-in-the-loop (controlled, no autonomous decisions)
- * - B1: Public/SaaS LLM (no internal data exposure)
- * - C1: Read-Only (no write permissions to systems)
- * - M1: Isolated System (single user, no multi-agent coordination)
+ * Lowest-risk configuration:
+ * - A1: Human-in-the-loop
+ * - B1: Public/SaaS LLM
+ * - C1: Read-Only
+ * - M1: Isolated System
  *
  * Keys match question_id from fields.ts.
  */
 export const GREEN_PATH_ANSWERS = {
-  /** Autonomy level: Human-in-the-loop (controlled) */
   q1_autonomy: "A1",
-  /** Architecture: Public/SaaS LLM (no internal data access) */
   q2_brain: "B1",
-  /** Capabilities: Read-Only (no write permissions) */
   q3_capability: "C1",
-  /** Management: Isolated System (single user tool) */
   q4_management: "M1",
 } as const;
 
-/**
- * Type for the green path answers object.
- */
+/** Type for the default green path answers object. */
 export type GreenPathAnswers = typeof GREEN_PATH_ANSWERS;
 
-/**
- * Type for question IDs that have green path requirements.
- */
+/** Question IDs that have green path requirements. */
 export type GreenPathQuestionId = keyof GreenPathAnswers;
+
+/** Ordered list of green-path question ids. */
+export const GREEN_PATH_QUESTION_IDS: GreenPathQuestionId[] = [
+  "q1_autonomy",
+  "q2_brain",
+  "q3_capability",
+  "q4_management",
+];
+
+/**
+ * Allowed answers map shape used in MongoDB settings and CustomCriteria.
+ */
+export type AllowedAnswersMap = Record<GreenPathQuestionId, string[]>;
+
+/**
+ * Convert hardcoded GREEN_PATH_ANSWERS into the multi-select settings shape.
+ *
+ * @returns Default allowedAnswers (each dimension has a single option)
+ */
+export function getDefaultAllowedAnswers(): AllowedAnswersMap {
+  return {
+    q1_autonomy: [GREEN_PATH_ANSWERS.q1_autonomy],
+    q2_brain: [GREEN_PATH_ANSWERS.q2_brain],
+    q3_capability: [GREEN_PATH_ANSWERS.q3_capability],
+    q4_management: [GREEN_PATH_ANSWERS.q4_management],
+  };
+}
+
+/**
+ * Wrap an allowedAnswers map for the rules engine `customCriteria` arg.
+ *
+ * @param allowedAnswers - Per-question allowed option ids
+ */
+export function toCustomCriteria(
+  allowedAnswers: AllowedAnswersMap | Record<string, string[]>
+): { allowedAnswers: Record<string, string[]> } {
+  return { allowedAnswers };
+}
 
 /**
  * Text fields that must be filled for auto-approval.
- *
- * These fields don't affect the auto-approval decision logic, but they
- * must be non-empty to ensure proper documentation exists for:
- * - Post-audit review by CISO
- * - Accountability tracking
- * - Governance compliance
- *
- * If any field is empty, the request goes to PENDING_CISO.
+ * Not editable via CISO settings UI in MVP.
  */
 export const REQUIRED_TEXT_FIELDS = [
-  /** Accountable manager - senior manager responsible for the agent */
   "gov_owner",
-  /** Technical owner - responsible for ongoing management */
   "gov_tech",
-  /** Change approver - authorized to approve significant changes */
   "gov_approver",
-  /** Monitoring mechanism - how the agent is monitored */
   "gov_monitoring",
 ] as const;
 
-/**
- * Type for required text field names.
- */
 export type RequiredTextField = (typeof REQUIRED_TEXT_FIELDS)[number];
 
 /**
- * Answer option ID that disqualifies auto-approval.
- *
- * "U0" means "unknown / requires organizational input" - if the submitter
- * doesn't know the answer, the request must be reviewed manually.
+ * Answer option ID that disqualifies auto-approval ("לא ידוע").
+ * Never selectable as a green-path allowed answer.
  */
 export const DISQUALIFYING_ANSWER = "U0";
 
+/** Section titles for the settings UI (Hebrew). */
+export const GREEN_PATH_SECTION_TITLES: Record<GreenPathQuestionId, string> = {
+  q1_autonomy: "רמת אוטונומיה מאושרת",
+  q2_brain: "ארכיטקטורה מאושרת",
+  q3_capability: "הרשאות מאושרות",
+  q4_management: "מבנה ניהול מאושר",
+};
+
 /**
- * Human-readable labels for green path criteria (for UI/logs).
+ * Human-readable labels for default green path criteria (for UI/logs).
  */
 export const GREEN_PATH_LABELS: Record<GreenPathQuestionId, string> = {
   q1_autonomy: "מבוקרת (Human-in-the-loop)",
@@ -96,9 +117,6 @@ export const GREEN_PATH_LABELS: Record<GreenPathQuestionId, string> = {
   q4_management: "נקודתי (Isolated System)",
 };
 
-/**
- * Human-readable labels for required text fields (for UI/logs).
- */
 export const REQUIRED_TEXT_FIELD_LABELS: Record<RequiredTextField, string> = {
   gov_owner: "מנהל אחראי",
   gov_tech: "אחראי טכני",

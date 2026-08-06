@@ -11,9 +11,9 @@
  * 2. "הסוכנים שלך במאגר" - List of user's approved agents
  *
  * AUTO-APPROVAL INTEGRATION:
- * On submit, the form evaluates answers against green-path criteria using
- * evaluateForAutoApproval(). If all criteria are met, the request is
- * auto-approved. Otherwise, it goes to PENDING_CISO for manual review.
+ * On submit, loads CISO green-path settings from the API, then evaluates
+ * answers with evaluateForAutoApproval(). Falls back to hardcoded defaults
+ * if settings fetch fails. Eligible → AUTO_APPROVED; else PENDING_CISO.
  *
  * @see lib/auto-approval/rulesEngine.ts - Auto-approval evaluation
  * @see components/RequestQueue.tsx - For tracking request status (הבקשות שלי tab)
@@ -24,6 +24,8 @@ import { fields } from "@/components/questionnaire/fields";
 import { createAgentCard } from "@/lib/agent-engine/createAgentCard";
 import { createRequest, fetchRequests, deleteRequest } from "@/lib/api/requests";
 import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
+import { toCustomCriteria } from "@/lib/auto-approval/greenPathCriteria";
+import { fetchGreenPathSettings } from "@/lib/api/greenPathSettings";
 import { useRole } from "@/contexts/RoleContext";
 import { toAgentCard, type AgentCard } from "@/lib/utils/requestHelpers";
 import { RequestStatus } from "@/lib/types";
@@ -296,18 +298,25 @@ export default function AgentForm() {
     setSuccessMsg(null);
     setAutoApprovalEligible(null);
 
-    // Step 1: Evaluate for auto-approval using the rules engine
-    const evaluation = evaluateForAutoApproval(answers);
+    // Step 1: Load CISO green-path settings (fail-safe → engine defaults)
+    const settingsRes = await fetchGreenPathSettings();
+    const customCriteria =
+      settingsRes.success && settingsRes.settings
+        ? toCustomCriteria(settingsRes.settings.allowedAnswers)
+        : undefined;
+
+    // Step 2: Evaluate for auto-approval using the rules engine
+    const evaluation = evaluateForAutoApproval(answers, customCriteria);
     setAutoApprovalEligible(evaluation.eligible);
 
-    // Step 2: Create the agent card
+    // Step 3: Create the agent card
     const card = createAgentCard({
       agentName,
       answers,
       fields,
     });
 
-    // Step 3: Submit to API with auto-approval info
+    // Step 4: Submit to API with auto-approval info
     const res = await createRequest({
       agentName: card.agentName,
       answers,

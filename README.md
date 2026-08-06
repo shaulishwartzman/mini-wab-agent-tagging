@@ -106,9 +106,13 @@ Server-side approval workflow for assessment requests:
 app/
 ├─ layout.tsx
 ├─ page.tsx                    # Main dashboard with role-based tabs
+├─ green-path/
+│  └─ page.tsx                 # CISO Green Path settings page
 └─ api/
    ├─ agent/
    │  └─ route.ts
+   ├─ green-path-settings/
+   │  └─ route.ts              # GET/PUT green path criteria
    └─ requests/
       ├─ route.ts              # POST create, GET list/filter with pagination
       └─ [id]/
@@ -117,6 +121,7 @@ app/
 components/
 ├─ AgentForm.tsx               # Assessment form (employees only)
 ├─ DashboardTabs.tsx           # Role-based tab navigation
+├─ GreenPathSettingsForm.tsx   # CISO checkbox editor for green path
 ├─ Pagination.tsx              # Prev/next pagination controls
 ├─ RequestQueue.tsx            # Paginated request list with actions
 ├─ RoleSwitcher.tsx            # MVP role selector (top banner)
@@ -127,9 +132,10 @@ lib/
 ├─ agent-engine/
 │  └─ createAgentCard.ts       # Build AgentCard from questionnaire answers
 ├─ api/
-│  └─ requests.ts              # Client-side API helpers with pagination support
+│  ├─ requests.ts              # Client-side API helpers with pagination support
+│  └─ greenPathSettings.ts     # fetch/save/reset green path settings
 ├─ auto-approval/
-│  ├─ greenPathCriteria.ts     # Green-path criteria definitions
+│  ├─ greenPathCriteria.ts     # Default criteria + helpers
 │  └─ rulesEngine.ts           # Auto-approval evaluation logic
 ├─ db/
 │  └─ mongodb.ts               # connectDB() — cached Mongoose connection
@@ -146,7 +152,8 @@ contexts/
 └─ RoleContext.tsx             # React context for current role state
 
 models/
-└─ AgentRequest.ts             # Mongoose schema (collection: agent_requests)
+├─ AgentRequest.ts             # Mongoose schema (collection: agent_requests)
+└─ GreenPathSettings.ts        # Singleton settings (collection: green_path_settings)
 
 .env.example                   # placeholder env vars (safe to commit)
 .env.local                     # local secrets (not committed)
@@ -273,18 +280,20 @@ CISO is the **final decision-maker**. Managers provide **recommendations only** 
 
 #### Auto-Approval Engine (Green Path)
 
-The auto-approval engine evaluates requests against hardcoded "green path" criteria. If ALL criteria are met, the request is automatically approved without CISO review.
+The auto-approval engine evaluates requests against green-path criteria. If ALL criteria are met, the request is automatically approved without CISO review.
 
-**Green Path Criteria (all must be met):**
+**Default Green Path Criteria (all must be met):**
 
-| Question | Required Answer | Meaning |
+| Question | Default Answer | Meaning |
 | --- | --- | --- |
-| Autonomy (`q1_autonomy`) | `A1` | Human-in-the-loop (controlled, no autonomous decisions) |
-| Architecture (`q2_brain`) | `B1` | Public/SaaS LLM (no internal data exposure) |
-| Capabilities (`q3_capability`) | `C1` | Read-Only (no write permissions) |
-| Management (`q4_management`) | `M1` | Isolated System (single user tool) |
+| Autonomy (`q1_autonomy`) | `A1` | Human-in-the-loop |
+| Architecture (`q2_brain`) | `B1` | Public/SaaS LLM |
+| Capabilities (`q3_capability`) | `C1` | Read-Only |
+| Management (`q4_management`) | `M1` | Isolated System |
 
-**Required Documentation Fields (must be non-empty):**
+CISO can expand each dimension (multi-select) via **הגדרות נתיב ירוק** (`/green-path`). Settings are stored in MongoDB collection `green_path_settings`.
+
+**Required Documentation Fields (must be non-empty, not editable in MVP UI):**
 
 | Field | Purpose |
 | --- | --- |
@@ -295,38 +304,47 @@ The auto-approval engine evaluates requests against hardcoded "green path" crite
 
 **Disqualifying Conditions:**
 
-- Any answer is `U0` (unknown/undetermined)
+- Any answer is `U0` (unknown/undetermined) — never allowed in settings
 - Any required text field is empty
-- Any closed question answer is not the green-path option
-
-**Why these criteria?**
-
-The green path represents the **lowest-risk agent configuration**:
-- Human always in control (no autonomous decisions)
-- No access to internal/sensitive data
-- Cannot modify any systems (read-only)
-- Single user tool (no multi-agent coordination)
+- Any closed question answer is outside the CISO-configured allowed list
 
 **Implementation:**
 
 ```
 lib/auto-approval/
-├── greenPathCriteria.ts   # Hardcoded criteria constants
-└── rulesEngine.ts         # Evaluation function with fail-safe defaults
+├── greenPathCriteria.ts   # Defaults + getDefaultAllowedAnswers / toCustomCriteria
+└── rulesEngine.ts         # evaluateForAutoApproval(answers, customCriteria?)
 
-components/AgentForm.tsx   # Runs evaluateForAutoApproval() on submit
+models/GreenPathSettings.ts
+app/api/green-path-settings/route.ts
+app/green-path/page.tsx
+components/GreenPathSettingsForm.tsx
+components/AgentForm.tsx   # Loads settings on submit, then evaluates
 ```
+
+#### Green Path Settings UI (CISO)
+
+| Item | Detail |
+| --- | --- |
+| Route | `/green-path` |
+| Access | CISO only (Role Switcher MVP). Others see unauthorized message |
+| Nav | Link **הגדרות נתיב ירוק** on main dashboard (CISO) |
+| Actions | **שמור שינויים** (PUT), **אפס לברירת מחדל** (restore A1/B1/C1/M1) |
+| API | `GET/PUT /api/green-path-settings` — PUT requires `actorRole: CISO` |
 
 #### Automatic Processing on Submit (onSubmit)
 
-The auto-approval engine runs **automatically** when the user clicks **"שמור בקשה"** — no manual step is required.
+The auto-approval engine runs **automatically** when the user clicks **"שמור בקשה"**.
 
 ```
 User clicks "שמור בקשה"
                     ↓
             AgentForm.handleSubmit()
                     ↓
-      evaluateForAutoApproval(answers)
+      GET /api/green-path-settings
+         (fail → use code defaults)
+                    ↓
+  evaluateForAutoApproval(answers, customCriteria)
                     ↓
           ┌─────────┴─────────┐
           ↓                   ↓
@@ -334,61 +352,21 @@ User clicks "שמור בקשה"
           ↓                   ↓
    autoApprove: true     autoApprove: false
    AUTO_APPROVED         PENDING_CISO
-   assignedTo: null      assignedTo: CISO
-   approvedBy:
-     SYSTEM_AUTO_APPROVAL
 ```
 
 - The form passes `autoApprove`, `autoApprovalEligible`, and `autoApprovalReason` to the API.
-- The API saves the request to MongoDB with the correct status.
-- The UI shows a short user-facing message: **הבקשה אושרה אוטומטית** (green) or **הבקשה נשלחה לאישור** (yellow). Technical status details stay in the DB / API only.
+- The UI shows: **הבקשה אושרה אוטומטית** or **הבקשה נשלחה לאישור**.
 
 #### Fail-Safe Defaults (מנגנון בטיחות)
 
-The rules engine is designed to be **conservative** - when in doubt, require CISO review:
-
 | Condition | Result |
 | --- | --- |
-| Any deviation from green path | `PENDING_CISO` |
+| Any deviation from allowed green-path answers | `PENDING_CISO` |
 | Any "לא ידוע" (U0) answer | `PENDING_CISO` |
 | Any required text field empty | `PENDING_CISO` |
+| Settings fetch fails on submit | Evaluate with code defaults |
 | Any error during evaluation | `PENDING_CISO` |
 | All criteria met | `AUTO_APPROVED` |
-
-**Usage:**
-
-```typescript
-import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
-
-const result = evaluateForAutoApproval(formAnswers);
-
-if (result.eligible) {
-  // AUTO_APPROVED - all green path criteria met
-} else {
-  // PENDING_CISO - result.reason explains why
-  // result.failedCriteria lists specific failures
-}
-```
-
-#### CISO Customization
-
-CISO can expand/narrow/change the green path criteria:
-
-```typescript
-// Example: Allow both A1 (Human-in-loop) AND A2 (Semi-Autonomous)
-const result = evaluateForAutoApproval(formAnswers, {
-  allowedAnswers: {
-    q1_autonomy: ["A1", "A2"],  // Expanded
-  }
-});
-
-// Example: Require only 2 text fields instead of 4
-const result = evaluateForAutoApproval(formAnswers, {
-  requiredTextFields: ["gov_owner", "gov_tech"],
-});
-```
-
-**Note:** Custom criteria UI will be added in the CISO dashboard (future task).
 
 **Routing History Entry:**
 
