@@ -30,6 +30,7 @@ import {
 } from "@/lib/auth/session";
 import { canCreateRole } from "@/lib/auth/permissions";
 import { UserErrors } from "@/lib/errors/user";
+import { sendTempPasswordEmail } from "@/lib/email/send";
 import mongoose from "mongoose";
 
 /**
@@ -207,10 +208,24 @@ export async function POST(request: NextRequest) {
 
     await newUser.save();
 
-    // Get org name for logging
+    // Get org name for email and logging
     const org = await Organization.findById(organizationId).lean();
 
-    // Log temporary password for development/testing
+    // Send email with temporary password
+    try {
+      await sendTempPasswordEmail({
+        to: newUser.email,
+        name: newUser.name,
+        organizationName: org?.name || 'Organization',
+        tempPassword,
+        role: newUser.role,
+      });
+    } catch (emailErr) {
+      console.error(`❌ Failed to send email to ${newUser.email}:`, emailErr);
+      // Continue - don't fail user creation if email fails
+    }
+
+    // Log temporary password for development/testing (backup)
     const divider = "=".repeat(70);
     const innerDivider = "-".repeat(70);
     console.log(`

@@ -5,9 +5,22 @@ Complete step-by-step testing guide with real example credentials.
 ## Prerequisites
 
 1. **MongoDB Atlas**: Ensure your cluster is running and accessible
-2. **Environment**: `.env.local` is configured with `MONGODB_URI`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
-3. **Dev Server**: Run `npm run dev` in a terminal (keep it visible for temp passwords)
+2. **Environment**: `.env.local` is configured with:
+   - `MONGODB_URI` (required)
+   - `NEXTAUTH_SECRET`, `NEXTAUTH_URL` (required)
+   - `SMTP_*` variables (optional - for email delivery, see below)
+3. **Dev Server**: Run `npm run dev` in a terminal (keep it visible for temp password backups)
 4. **Browser**: Use Chrome/Edge in normal + incognito windows for testing multiple users
+
+### Email Configuration (Optional)
+
+Temporary passwords are sent via email when configured. To enable:
+
+1. Add SMTP settings to `.env.local` (see README for Gmail setup)
+2. If SMTP is not configured:
+   - Passwords will only appear in the terminal
+   - Check terminal output after creating users
+   - Email sending will be skipped (with warning logged)
 
 ---
 
@@ -39,8 +52,10 @@ CISO Email:       ciso@testcompany.com
 
 **Expected Result**:
 - Success message: "הארגון נרשם בהצלחה..."
-- **IMPORTANT**: Check the terminal running `npm run dev`
-- You'll see a boxed message with the temporary password, e.g.:
+- **Temporary Password Delivery**:
+  - **Email** (if SMTP configured): Check `sarah.chen@techflow.io` inbox
+  - **Terminal** (always printed as backup): Check `npm run dev` output
+- You'll see a boxed message in terminal with the temporary password, e.g.:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -141,10 +156,12 @@ Role:      מנהל (MANAGER)
 
 **Expected Result**:
 - Success banner: "המשתמש Test Manager נוצר בהצלחה..."
-- **Check terminal** for temp password, e.g.: `mN7&qP4#dK8!`
+- **Temporary Password**:
+  - Check email: `james.kim@techflow.io` (if SMTP configured)
+  - Check terminal: printed as backup, e.g.: `mN7&qP4#dK8!`
 - Table now shows 2 users
 
-**Copy the Manager's temp password**
+**Copy the Manager's temp password** (from email or terminal)
 
 ### Step 7: Create an Employee
 
@@ -155,7 +172,7 @@ Full Name: Test Employee
 Role:      עובד (EMPLOYEE)
 ```
 
-**Copy the Employee's temp password** from terminal
+**Copy the Employee's temp password** (from email or terminal)
 
 **Verify**: User table now shows 3 users (CISO, Manager, Employee)
 
@@ -494,9 +511,15 @@ Use these to verify everything works:
 
 ## Troubleshooting
 
+**Issue**: Didn't receive temporary password email
+- **Check 1**: SMTP configured in `.env.local`? (if not, check terminal only)
+- **Check 2**: Check spam/junk folder
+- **Check 3**: Look for warning in terminal: "SMTP not configured"
+- **Fallback**: Password is always printed to terminal as backup
+
 **Issue**: Temp password not visible in terminal
 - **Fix**: Make sure `npm run dev` is running in a visible terminal window
-- Password appears immediately after user creation
+- Password appears immediately after user creation (even if email fails)
 
 **Issue**: Login fails after registering org
 - **Fix**: Check MongoDB connection, verify user was created

@@ -605,6 +605,47 @@ NEXTAUTH_URL=http://localhost:3000
 
 Generate a secret: `openssl rand -base64 32` (or PowerShell: random 32 bytes as Base64). Also set `NEXTAUTH_*` on Render for production.
 
+#### Email Configuration (SMTP)
+
+Temporary passwords are sent via email when users are created. Configure SMTP settings:
+
+```bash
+# Email Configuration (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+
+# Email sender info
+EMAIL_FROM_ADDRESS=noreply@your-domain.com
+EMAIL_FROM_NAME=AI Governance Platform
+```
+
+**Gmail Setup (Recommended for Development):**
+
+1. Enable 2-Factor Authentication on your Google account
+2. Go to [Google App Passwords](https://myaccount.google.com/apppasswords)
+3. Generate a new App Password for "Mail"
+4. Copy the 16-character password (remove spaces)
+5. Set `SMTP_USER` to your Gmail address
+6. Set `SMTP_PASS` to the 16-character App Password
+
+**Production Options:**
+
+- **SendGrid**: Reliable transactional email service with free tier
+- **AWS SES**: Cost-effective for high volume
+- **Resend**: Modern API with great developer experience
+- **Mailtrap**: Email testing (development only, doesn't deliver to real inboxes)
+
+**Fallback Behavior:**
+
+If SMTP is not configured, the system will:
+- Log a warning message
+- Continue creating users successfully
+- Print temporary passwords to the terminal (backup method)
+- User creation will NOT fail if email sending fails
+
 ---
 
 ## Request Lifecycle API

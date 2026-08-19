@@ -29,6 +29,7 @@ import { slugify } from "@/lib/utils/slugify";
 import { OrganizationErrors } from "@/lib/errors/auth";
 import { getAuthUser } from "@/lib/auth/session";
 import { AdminErrors } from "@/lib/errors/admin";
+import { sendTempPasswordEmail } from "@/lib/email/send";
 
 /** Request body shape for organization registration. */
 interface RegisterOrgBody {
@@ -194,8 +195,21 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    // Log temporary password for development/testing
-    // TODO: Replace with actual email sending in production
+    // Send email with temporary password
+    try {
+      await sendTempPasswordEmail({
+        to: cisoUser.email,
+        name: cisoUser.name,
+        organizationName: organization.name,
+        tempPassword,
+        role: 'CISO',
+      });
+    } catch (emailErr) {
+      console.error(`❌ Failed to send email to ${cisoUser.email}:`, emailErr);
+      // Continue - don't fail registration if email fails
+    }
+
+    // Log temporary password for development/testing (backup)
     const divider = "=".repeat(70);
     const innerDivider = "-".repeat(70);
     console.log(`

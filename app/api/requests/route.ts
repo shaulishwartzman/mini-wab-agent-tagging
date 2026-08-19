@@ -153,6 +153,7 @@ export async function POST(req: Request) {
  * - `assignedTo` — filter by role inbox (EMPLOYEE | MANAGER | CISO)
  * - `assignedToUserId` — filter by specific user assignment (for manager routing)
  * - `submittedByUserId` — filter by who submitted the request
+ * - `organizationId` — filter by organization (for SYSTEM_ADMIN viewing org requests)
  * - `status` — single status, or comma-separated list for `$in` match
  *   (e.g. `PENDING_CISO,PENDING_MANAGER` for active/open requests)
  * - `page` — page number (default: 1)
@@ -175,6 +176,7 @@ export async function GET(req: Request) {
     const assignedTo = searchParams.get("assignedTo");
     const assignedToUserId = searchParams.get("assignedToUserId");
     const submittedByUserId = searchParams.get("submittedByUserId");
+    const organizationId = searchParams.get("organizationId");
     const status = searchParams.get("status");
 
     // Pagination params (with bounds)
@@ -206,6 +208,11 @@ export async function GET(req: Request) {
     // Apply submittedByUserId filter (for "my requests" view)
     if (submittedByUserId) {
       filter.submittedByUserId = submittedByUserId;
+    }
+
+    // Apply organizationId filter (for SYSTEM_ADMIN viewing org requests)
+    if (organizationId) {
+      filter.organizationId = organizationId;
     }
 
     // Validate and apply status filter (single value or comma-separated list)

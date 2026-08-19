@@ -20,6 +20,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminLabels } from "@/lib/errors/admin";
 import { getRoleLabel } from "@/lib/errors/user";
 import { Pagination } from "@/components/Pagination";
+import { getStatusLabel, getStatusBadgeStyle } from "@/lib/utils/requestHelpers";
+import type { AgentRequestResponse, PaginationInfo } from "@/lib/api/requests";
 
 interface Organization {
   id: string;
@@ -38,7 +40,7 @@ interface User {
   createdAt: string;
 }
 
-type ViewMode = "list" | "users";
+type ViewMode = "list" | "users" | "requests";
 
 /**
  * AdminDashboard - System-wide organization management.
@@ -57,6 +59,10 @@ export function AdminDashboard() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [orgUsers, setOrgUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [orgRequests, setOrgRequests] = useState<AgentRequestResponse[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsPage, setRequestsPage] = useState(1);
+  const [requestsPagination, setRequestsPagination] = useState<PaginationInfo | null>(null);
 
   // Fetch organizations on mount
   useEffect(() => {
@@ -96,6 +102,25 @@ export function AdminDashboard() {
     }
   }, []);
 
+  // Fetch requests for a specific org
+  const fetchOrgRequests = useCallback(async (orgId: string, page: number = 1) => {
+    setRequestsLoading(true);
+    try {
+      const res = await fetch(`/api/requests?organizationId=${orgId}&page=${page}&limit=5`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Failed to fetch requests");
+      }
+      const data = await res.json();
+      setOrgRequests(data.requests);
+      setRequestsPagination(data.pagination);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה בטעינת בקשות");
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, []);
+
   // Handle view users click
   const handleViewUsers = (org: Organization) => {
     setSelectedOrg(org);
@@ -103,11 +128,22 @@ export function AdminDashboard() {
     fetchOrgUsers(org.id);
   };
 
+  // Handle view requests click
+  const handleViewRequests = (org: Organization) => {
+    setSelectedOrg(org);
+    setViewMode("requests");
+    setRequestsPage(1);
+    fetchOrgRequests(org.id, 1);
+  };
+
   // Handle back to list
   const handleBackToList = () => {
     setViewMode("list");
     setSelectedOrg(null);
     setOrgUsers([]);
+    setOrgRequests([]);
+    setRequestsPage(1);
+    setRequestsPagination(null);
   };
 
   // Format date for display
@@ -193,6 +229,79 @@ export function AdminDashboard() {
     );
   }
 
+  // Requests view for selected organization
+  if (viewMode === "requests" && selectedOrg) {
+    return (
+      <div dir="rtl">
+        <button
+          type="button"
+          onClick={handleBackToList}
+          style={backButtonStyle}
+        >
+          ← {AdminLabels.backToList}
+        </button>
+
+        <h2 style={sectionHeaderStyle}>
+          בקשות של {selectedOrg.name}
+        </h2>
+
+        {requestsLoading ? (
+          <div style={loadingStyle}>{AdminLabels.loading}</div>
+        ) : orgRequests.length === 0 ? (
+          <div style={emptyStateStyle}>אין בקשות בארגון זה</div>
+        ) : (
+          <>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>שם הסוכן</th>
+                  <th style={thStyle}>הוגש על ידי</th>
+                  <th style={thStyle}>סטטוס</th>
+                  <th style={thStyle}>רמת הסוכן</th>
+                  <th style={thStyle}>תאריך הגשה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orgRequests.map((request) => (
+                  <tr key={request._id} style={trStyle}>
+                    <td style={tdStyle}>
+                      <strong>{request.agentName}</strong>
+                    </td>
+                    <td style={tdStyle}>
+                      {request.submittedByName || request.submittedByRole}
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={getStatusBadgeStyle(request.status)}>
+                        {getStatusLabel(request.status)}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      <code style={slugStyle}>{request.agentLevel}</code>
+                    </td>
+                    <td style={tdStyle}>{formatDate(request.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {requestsPagination && requestsPagination.totalPages > 1 && (
+              <Pagination
+                page={requestsPage}
+                totalPages={requestsPagination.totalPages}
+                total={requestsPagination.total}
+                onPageChange={(newPage) => {
+                  setRequestsPage(newPage);
+                  fetchOrgRequests(selectedOrg.id, newPage);
+                }}
+                disabled={requestsLoading}
+              />
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   // Main organizations list view
   // Pagination calculations
   const totalPages = Math.ceil(organizations.length / pageSize);
@@ -256,13 +365,22 @@ export function AdminDashboard() {
                   <td style={tdStyle}>{org.userCount}</td>
                   <td style={tdStyle}>{formatDate(org.createdAt)}</td>
                   <td style={tdStyle}>
-                    <button
-                      type="button"
-                      onClick={() => handleViewUsers(org)}
-                      style={actionButtonStyle}
-                    >
-                      {AdminLabels.viewUsers}
-                    </button>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleViewUsers(org)}
+                        style={actionButtonStyle}
+                      >
+                        {AdminLabels.viewUsers}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleViewRequests(org)}
+                        style={{ ...actionButtonStyle, backgroundColor: "#10b981" }}
+                      >
+                        צפייה בבקשות
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
