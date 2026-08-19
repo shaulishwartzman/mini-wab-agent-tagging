@@ -46,17 +46,18 @@ export function Pagination({
   const canGoPrev = page > 1;
   const canGoNext = page < totalPages;
 
-  const buttonStyle = (enabled: boolean): React.CSSProperties => ({
-    padding: "8px 16px",
-    border: "1px solid #e2e8f0",
-    borderRadius: "6px",
-    backgroundColor: enabled ? "#ffffff" : "#f1f5f9",
-    color: enabled ? "#1e293b" : "#94a3b8",
-    cursor: enabled && !disabled ? "pointer" : "not-allowed",
+  const buttonStyle: React.CSSProperties = {
+    padding: "10px 20px",
+    border: "1px solid #3b82f6",
+    borderRadius: "8px",
+    backgroundColor: "#ffffff",
+    color: "#2563eb",
+    cursor: disabled ? "not-allowed" : "pointer",
     fontSize: "14px",
-    fontWeight: 500,
-    transition: "all 0.15s ease",
-  });
+    fontWeight: 600,
+    transition: "all 0.2s ease",
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+  };
 
   const handlePrev = () => {
     if (canGoPrev && !disabled) {
@@ -81,45 +82,73 @@ export function Pagination({
         alignItems: "center",
         justifyContent: "center",
         gap: "16px",
-        padding: "16px 0",
+        padding: "20px 0",
         direction: "rtl",
       }}
     >
-      <button
-        type="button"
-        onClick={handlePrev}
-        disabled={!canGoPrev || disabled}
-        style={buttonStyle(canGoPrev)}
-        aria-label="Previous page"
-      >
-        ←
-      </button>
+      {/* Show back arrow only if not on first page */}
+      {canGoPrev && (
+        <button
+          type="button"
+          onClick={handlePrev}
+          disabled={disabled}
+          style={buttonStyle}
+          aria-label="עמוד קודם"
+          onMouseEnter={(e) => {
+            if (!disabled) {
+              e.currentTarget.style.backgroundColor = "#eff6ff";
+              e.currentTarget.style.borderColor = "#2563eb";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "#ffffff";
+            e.currentTarget.style.borderColor = "#3b82f6";
+          }}
+        >
+          ← הקודם
+        </button>
+      )}
 
       <span
         style={{
-          fontSize: "14px",
-          color: "#475569",
-          minWidth: "120px",
+          fontSize: "15px",
+          color: "#1e293b",
+          fontWeight: 600,
+          minWidth: "150px",
           textAlign: "center",
+          padding: "0 8px",
         }}
       >
         עמוד {page} מתוך {totalPages}
         {total !== undefined && (
-          <span style={{ color: "#94a3b8", marginRight: "8px" }}>
+          <span style={{ color: "#64748b", marginRight: "8px", fontWeight: 400 }}>
             ({total} סה״כ)
           </span>
         )}
       </span>
 
-      <button
-        type="button"
-        onClick={handleNext}
-        disabled={!canGoNext || disabled}
-        style={buttonStyle(canGoNext)}
-        aria-label="Next page"
-      >
-        →
-      </button>
+      {/* Show forward arrow only if not on last page */}
+      {canGoNext && (
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={disabled}
+          style={buttonStyle}
+          aria-label="עמוד הבא"
+          onMouseEnter={(e) => {
+            if (!disabled) {
+              e.currentTarget.style.backgroundColor = "#eff6ff";
+              e.currentTarget.style.borderColor = "#2563eb";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "#ffffff";
+            e.currentTarget.style.borderColor = "#3b82f6";
+          }}
+        >
+          הבא →
+        </button>
+      )}
     </div>
   );
 }

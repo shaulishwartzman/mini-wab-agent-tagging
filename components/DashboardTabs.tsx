@@ -2,16 +2,14 @@
  * DashboardTabs - Role-based tab navigation for the dashboard.
  *
  * Shows different tabs based on the current user's role:
- * - EMPLOYEE: "הגשת בקשה" (form) | "הבקשות שלי" (my requests)
- * - MANAGER: "ממתין להמלצתי" (pending queue only — MVP reviewer role)
+ * - EMPLOYEE: "הגשת בקשה" | "הבקשות שלי"
+ * - MANAGER: "הגשת בקשה" | "הבקשות שלי" | "ממתין להמלצתי"
  * - CISO: filter navigation for oversight queues:
  *   - ממתין לטיפולי — needs CISO action now (`assignedTo=CISO`)
  *   - בקשות פעילות — open pipeline (`PENDING_CISO` + `PENDING_MANAGER`)
  *   - היסטוריית אישורים — terminal requests (`APPROVED` | `REJECTED` | `AUTO_APPROVED`)
  *
  * Removed (replaced by history): כל הבקשות, אושרו אוטומטית.
- *
- * Key UX rule: Only employees see the form. Manager/CISO see queues by default.
  *
  * @see app/page.tsx - Main consumer
  * @see lib/utils/dashboardFilters.ts - CISO tab → API filter mapping
@@ -32,7 +30,8 @@ export type Tab = {
 /**
  * Tabs configuration per role.
  *
- * CISO tabs are quick filters (not separate pages). Manager stays single-queue.
+ * Employee and Manager share submit + my-requests; Manager adds review inbox.
+ * CISO tabs are quick filters (not separate pages).
  */
 export const TABS_BY_ROLE: Record<string, Tab[]> = {
   [UserRole.EMPLOYEE]: [
@@ -40,6 +39,8 @@ export const TABS_BY_ROLE: Record<string, Tab[]> = {
     { id: "my-requests", label: "הבקשות שלי" },
   ],
   [UserRole.MANAGER]: [
+    { id: "form", label: "הגשת בקשה" },
+    { id: "my-requests", label: "הבקשות שלי" },
     { id: "pending", label: "ממתין להמלצתי" },
   ],
   [UserRole.CISO]: [

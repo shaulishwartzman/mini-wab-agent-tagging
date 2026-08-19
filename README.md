@@ -67,7 +67,7 @@ All assessment requests and approved agents are stored in **MongoDB Atlas** via 
 - Employee “הסוכנים שלך במאגר” and all role queues load from MongoDB
 - **No browser LocalStorage (or similar) for requests / agents** — that old client inventory path was removed
 
-The only LocalStorage usage in the app is the MVP **Role Switcher** (`mvp-test-role` in `RoleContext`), which is unrelated to request persistence and will be replaced by real auth later.
+The only LocalStorage usage in the app is the **Admin Role Impersonation** feature (`mvp-test-role` in `RoleContext`), which allows SYSTEM_ADMIN users to test different role views. Regular users never see this feature.
 
 ---
 
@@ -99,13 +99,15 @@ Server-side approval workflow for assessment requests:
 
 | Store | What lives there |
 | --- | --- |
-| MongoDB `agentRequestDB.agent_requests` | All assessment requests + workflow/audit fields |
+| MongoDB `agentRequestDB.organizations` | Multi-tenant organizations |
+| MongoDB `agentRequestDB.users` | User accounts with roles (bcrypt-hashed passwords) |
+| MongoDB `agentRequestDB.agent_requests` | All assessment requests + workflow/audit fields (scoped by organizationId) |
 | MongoDB `agentRequestDB.green_path_settings` | CISO green-path criteria (singleton) |
 | Browser LocalStorage (`mvp-test-role`) | MVP selected role only — **not** requests |
 
 ### Hosting
 
-- Render (env: `MONGODB_URI` in the Web Service dashboard)
+- Render Web Service env: `MONGODB_URI`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
 
 ---
 
@@ -130,7 +132,7 @@ Server-side approval workflow for assessment requests:
 3. Manager **recommends** (approve/reject) → returns to `PENDING_CISO`; identity & optional note stay in `routingHistory`
 4. CISO makes the **final** APPROVE / REJECT → terminal status; request appears in approval history
 
-Manager never sets terminal APPROVED/REJECTED. Optional correspondence is drafted in the UI under “להתכתבות עם המנהל / ה-CISO” and saved as `reviewNotes` + `routingHistory[].notes`.
+Manager never sets terminal APPROVED/REJECTED. Optional correspondence is drafted in the UI under “להתכתבות עם המנהל / ה-CISO” and saved as `reviewNotes` + `routingHistory[].notes`. Employees do not see this thread on **הבקשות שלי**.
 
 ---
 
@@ -139,10 +141,34 @@ Manager never sets terminal APPROVED/REJECTED. Optional correspondence is drafte
 ```text
 app/
 ├─ layout.tsx
-├─ page.tsx                    # Main dashboard with role-based tabs
+├─ providers.tsx               # SessionProvider + Admin RoleProvider (impersonation)
+├─ page.tsx                    # Public landing (login / register-org CTAs)
+├─ dashboard/
+│  └─ page.tsx                 # Role-based approval dashboard
+├─ login/
+│  └─ page.tsx                 # Sign-in (org + email + password)
+├─ register-org/
+│  └─ page.tsx                 # Register organization + first CISO
+├─ change-password/
+│  └─ page.tsx                 # First-login / forced password change
+├─ users/
+│  └─ page.tsx                 # User management (CISO/MANAGER only)
+├─ admin/
+│  ├─ page.tsx                 # System admin panel (SYSTEM_ADMIN only)
+│  └─ login/
+│     └─ page.tsx              # Dedicated admin login page
 ├─ green-path/
 │  └─ page.tsx                 # CISO Green Path settings page
 └─ api/
+   ├─ auth/
+   │  ├─ [...nextauth]/
+   │  │  └─ route.ts           # NextAuth API handler (signin/signout/session)
+   │  └─ change-password/
+   │     └─ route.ts           # POST change password (authenticated)
+   ├─ organizations/
+   │  └─ route.ts              # GET list orgs (admin), POST register org + CISO
+   ├─ users/
+   │  └─ route.ts              # GET list users, POST create user
    ├─ green-path-settings/
    │  └─ route.ts              # GET/PUT green path criteria
    └─ requests/
@@ -150,8 +176,21 @@ app/
       └─ [id]/
          └─ route.ts           # PATCH/PUT/DELETE status transitions
 
+proxy.ts                       # Auth route protection (Next.js 16 proxy convention)
+
 components/
-├─ AgentForm.tsx               # Assessment form (employees only)
+├─ auth/
+│  ├─ AuthShell.tsx            # Shared auth page layout + form styles
+│  ├─ LoginForm.tsx            # Credentials login form
+│  ├─ AdminLoginForm.tsx       # SYSTEM_ADMIN login form
+│  ├─ RegisterOrgForm.tsx      # Org + first CISO registration form
+│  ├─ ChangePasswordForm.tsx   # Password change form
+│  └─ SessionNav.tsx           # Dashboard sign-out + users link
+├─ users/
+│  └─ UserManagementClient.tsx # User list + create form (client component)
+├─ admin/
+│  └─ AdminDashboard.tsx       # Org list + drill-down UI (client component)
+├─ AgentForm.tsx               # Assessment form (employee + manager)
 ├─ DashboardTabs.tsx           # Role-based tab navigation
 ├─ FieldHelpTooltip.tsx        # (?) hover help next to questionnaire fields
 ├─ GreenPathSettingsForm.tsx   # CISO checkbox editor for green path
@@ -159,7 +198,7 @@ components/
 ├─ RequestAnswersPanel.tsx     # Read-only questionnaire toggle in request cards
 ├─ CorrespondencePanel.tsx     # Collapsible CISO↔manager note thread
 ├─ RequestQueue.tsx            # Paginated request list with actions
-├─ RoleSwitcher.tsx            # MVP role selector (top banner)
+├─ RoleSwitcher.tsx            # Admin role impersonation (SYSTEM_ADMIN only)
 └─ questionnaire/
    └─ fields.ts                # Questions, options, and field tooltips
 
@@ -167,32 +206,404 @@ lib/
 ├─ agent-engine/
 │  └─ createAgentCard.ts       # Build AgentCard from questionnaire answers
 ├─ api/
+│  ├─ auth.ts                  # changePassword() client helper
+│  ├─ jsonResponse.ts          # jsonError / jsonOk for API routes
+│  ├─ organizations.ts         # registerOrganization() client helper
 │  ├─ requests.ts              # Client-side API helpers with pagination support
 │  └─ greenPathSettings.ts     # fetch/save/reset green path settings
+├─ auth/
+│  ├─ auth-options.ts          # NextAuth Credentials config
+│  ├─ password.ts              # Temp password generation + bcrypt helpers
+│  ├─ permissions.ts           # canCreateUsers / canCreateRole (client-safe)
+│  └─ session.ts               # getAuthSession / requireAuthUser helpers
 ├─ auto-approval/
 │  ├─ greenPathCriteria.ts     # Default criteria + helpers
 │  └─ rulesEngine.ts           # Auto-approval evaluation logic
 ├─ db/
-│  └─ mongodb.ts               # connectDB() — cached Mongoose connection
+│  ├─ mongodb.ts               # connectDB() — cached Mongoose connection
+│  └─ seed-admin.ts            # Auto-seed SYSTEM_ADMIN from env vars
 ├─ errors/
-│  └─ authorization.ts         # Hebrew 403 messages + redirect hints
+│  ├─ admin.ts                 # Hebrew messages for system admin panel
+│  ├─ authorization.ts         # Hebrew 403 messages for request actions
+│  ├─ auth.ts                  # Hebrew messages for login / register / password / org registration
+│  └─ user.ts                  # Hebrew messages for user management
 ├─ requests/
 │  └─ transitions.ts           # Legal status transition + role authorization rules
 ├─ utils/
+│  ├─ slugify.ts               # Organization name → login slug
 │  ├─ dashboardFilters.ts      # CISO tab → queue filter presets
 │  └─ requestHelpers.ts        # Status labels, colors, card conversion helpers
 └─ types.ts                    # Shared types: AgentCard, RequestStatus, payloads
 
 contexts/
-└─ RoleContext.tsx             # React context for current role state
+└─ RoleContext.tsx             # Admin role impersonation state (SYSTEM_ADMIN feature)
 
 models/
+├─ Organization.ts             # Multi-tenant organization (collection: organizations)
+├─ User.ts                     # User accounts with roles (collection: users)
 ├─ AgentRequest.ts             # Mongoose schema (collection: agent_requests)
 └─ GreenPathSettings.ts        # Singleton settings (collection: green_path_settings)
+
+scripts/
+└─ seed-admin.ts               # CLI tool: npm run seed:admin
+
+docs/
+└─ admin-setup.md              # SYSTEM_ADMIN setup guide
 
 .env.example                   # placeholder env vars (safe to commit)
 .env.local                     # local secrets (not committed)
 ```
+
+---
+
+## Multi-Tenant Data Models
+
+The system supports multiple organizations, each with isolated data.
+
+### Organization (`models/Organization.ts`)
+
+Represents a tenant in the multi-org system.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `_id` | ObjectId | Unique identifier |
+| `name` | String | Display name (e.g., "Hadassah Academic College") |
+| `slug` | String | URL-safe identifier for login (auto-generated from name) |
+| `createdAt` | Date | Timestamp |
+| `updatedAt` | Date | Timestamp |
+
+### User (`models/User.ts`)
+
+User accounts with role-based permissions. Passwords are bcrypt-hashed.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `_id` | ObjectId | Unique identifier |
+| `email` | String | Login identifier (unique per organization) |
+| `password` | String | Bcrypt-hashed (excluded from queries by default) |
+| `name` | String | Display name |
+| `role` | Enum | `EMPLOYEE`, `MANAGER`, `CISO`, or `SYSTEM_ADMIN` |
+| `organizationId` | ObjectId | FK to Organization (null for SYSTEM_ADMIN) |
+| `mustChangePassword` | Boolean | True for new users with temp password |
+| `createdBy` | ObjectId | FK to User who created this account |
+| `createdAt` | Date | Timestamp |
+| `updatedAt` | Date | Timestamp |
+
+**Indexes:**
+- Compound unique: `{ email, organizationId }` — same email can exist in different orgs
+- Partial unique for SYSTEM_ADMIN: `{ email }` where `organizationId: null`
+
+### Role Permissions
+
+| Role | Create EMPLOYEE | Create MANAGER | Create CISO | View All Orgs |
+| --- | --- | --- | --- | --- |
+| EMPLOYEE | No | No | No | No |
+| MANAGER | Yes | Yes | No | No |
+| CISO | Yes | Yes | Yes | No |
+| SYSTEM_ADMIN | Yes | Yes | Yes | Yes |
+
+### Data Isolation
+
+- Every `AgentRequest` has a required `organizationId` field
+- All API queries filter by `organizationId` from the user's session
+- Users can only see data from their own organization
+- `SYSTEM_ADMIN` can view across all organizations
+
+---
+
+## Authentication (NextAuth.js)
+
+Multi-tenant authentication using NextAuth.js v4 with Credentials provider and JWT sessions.
+
+### Login Flow
+
+1. User enters: **Organization slug** + **Email** + **Password**
+2. System looks up organization by slug
+3. Finds user by email within that organization (compound unique per org)
+4. Verifies password with bcrypt (`User.comparePassword`)
+5. Creates JWT session with user + org info
+
+**SYSTEM_ADMIN** users login with email + password only (leave organization slug empty).
+
+Client sign-in (once login UI exists):
+
+```ts
+signIn("credentials", {
+  organizationSlug: "hadassah-academic-college",
+  email: "ciso@example.com",
+  password: "...",
+});
+```
+
+### Session Data
+
+The session (`useSession` / `getAuthSession`) includes:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string | User's MongoDB ObjectId |
+| `email` | string | User's email |
+| `name` | string | Display name |
+| `role` | string | EMPLOYEE, MANAGER, CISO, or SYSTEM_ADMIN |
+| `organizationId` | string \| null | Org ObjectId (null for SYSTEM_ADMIN) |
+| `organizationName` | string \| null | Org display name |
+| `mustChangePassword` | boolean | True if temp password needs changing |
+
+### Public Auth Pages
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Landing — Sign in / Register organization (redirects signed-in users to `/dashboard`) |
+| `/login` | Org name + email + password (SYSTEM_ADMIN: leave org empty) |
+| `/admin/login` | Dedicated admin login page (email + password only) |
+| `/register-org` | Register org + first CISO (calls `POST /api/organizations`) |
+| `/change-password` | Replace temporary password; updates JWT via `session.update` |
+| `/dashboard` | Authenticated approval workflow UI (SYSTEM_ADMIN sees role impersonation banner) |
+
+Hebrew form validation / error banners live in `components/auth/*`.
+
+### Route Protection (`proxy.ts`)
+
+Next.js 16 uses the `proxy.ts` convention (replaces deprecated `middleware.ts`).
+
+| Route | Access |
+| --- | --- |
+| `/`, `/login`, `/register-org`, `/admin/login` | Public |
+| `/api/auth/*`, `/api/organizations` | Public path (handlers enforce session where needed) |
+| `/dashboard`, `/green-path`, request APIs | **Authenticated** (any role) |
+| `/change-password` | Authenticated (any role) |
+| `/admin/*` | SYSTEM_ADMIN only |
+| `/users/*` | CISO, MANAGER, SYSTEM_ADMIN |
+
+Users with `mustChangePassword: true` are redirected to `/change-password`.
+
+### Auth Modules
+
+| Path | Purpose |
+| --- | --- |
+| `lib/auth/auth-options.ts` | NextAuth Credentials config, JWT/session callbacks |
+| `lib/auth/permissions.ts` | `canCreateUsers` / `canCreateRole` (shared client + server) |
+| `lib/auth/password.ts` | `generateTempPassword`, `hashPassword`, `verifyPassword` |
+| `lib/auth/session.ts` | `getAuthSession`, `getAuthUser`, `requireAuthUser`, `hasRole` |
+| `lib/utils/slugify.ts` | Organization name → slug (shared by login + Organization model) |
+| `lib/api/auth.ts` | `changePassword()` client helper |
+| `lib/api/jsonResponse.ts` | `jsonError(message, status)` / `jsonOk(body)` for API routes |
+| `lib/api/organizations.ts` | `registerOrganization()` client helper |
+| `app/api/auth/[...nextauth]/route.ts` | NextAuth App Router handler (`GET` / `POST`) |
+| `app/api/auth/change-password/route.ts` | Authenticated password change |
+| `app/api/organizations/route.ts` | GET list orgs (admin), POST register org + CISO |
+| `app/api/users/route.ts` | User management (GET list, POST create) |
+| `proxy.ts` | Route protection and role-based redirects |
+| `app/providers.tsx` | Wraps app in `SessionProvider` |
+| `components/auth/*` | AuthShell + Login / RegisterOrg / ChangePassword forms |
+| `components/users/*` | UserManagementClient (list + create form) |
+| `components/admin/*` | AdminDashboard (org list + drill-down) |
+| `lib/errors/admin.ts` | Hebrew admin panel messages and labels |
+| `lib/errors/auth.ts` | Hebrew login / register / change-password / org-registration messages |
+| `lib/errors/user.ts` | Hebrew user management messages + role labels |
+
+### Organization Registration API
+
+`POST /api/organizations` — Public endpoint for registering new organizations.
+
+**Request Body:**
+
+```json
+{
+  "name": "Organization Display Name",
+  "cisoName": "First CISO Full Name",
+  "cisoEmail": "ciso@company.com"
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "organization": {
+    "id": "...",
+    "name": "Organization Display Name",
+    "slug": "organization-display-name"
+  },
+  "message": "הארגון נרשם בהצלחה. סיסמה זמנית נשלחה לאימייל ה-CISO."
+}
+```
+
+**Error Responses:**
+
+| Status | Reason |
+| --- | --- |
+| 400 | Missing or invalid fields (name, cisoName, cisoEmail) |
+| 409 | Organization slug already exists, or email already taken |
+| 500 | Server error |
+
+**MVP Note:** Temporary passwords are logged to the server console. Email integration is pending for production.
+
+### Organizations List API (Admin Only)
+
+`GET /api/organizations` — Protected endpoint for listing all organizations.
+
+**Authorization:** SYSTEM_ADMIN only.
+
+**Response (200 OK):**
+
+```json
+{
+  "organizations": [
+    {
+      "id": "...",
+      "name": "Organization Name",
+      "slug": "organization-name",
+      "userCount": 5,
+      "createdAt": "2024-01-15T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Status | Reason |
+| --- | --- |
+| 401 | Not authenticated |
+| 403 | Not SYSTEM_ADMIN role |
+| 500 | Server error |
+
+### System Admin Panel
+
+The admin panel (`/admin`) provides a system-wide view for SYSTEM_ADMIN users:
+
+**Features:**
+- View all organizations with user counts
+- Drill-down to view users in any organization (read-only)
+- No org-specific actions in MVP (viewing only)
+
+**Creating Admins (two methods):**
+
+| Method | File | Use Case |
+| --- | --- | --- |
+| CLI Tool | `scripts/seed-admin.ts` | Development, manual setup |
+| Auto-Seed | `lib/db/seed-admin.ts` | Deployments, CI/CD |
+
+- **CLI**: Set `$env:MONGODB_URI` first (PowerShell) or `export MONGODB_URI` (Bash), then `npm run seed:admin`
+- **Auto-seed**: Set `SEED_ADMIN_EMAIL` + `SEED_ADMIN_PASSWORD` env vars; admin created on app startup
+- See [docs/admin-setup.md](docs/admin-setup.md) for full guide with shell commands and function reference
+
+**Login:** Use the dedicated `/admin/login` page, or go to `/login` and leave the organization name field **empty**.
+
+**Components:**
+| Path | Purpose |
+| --- | --- |
+| `scripts/seed-admin.ts` | CLI tool for creating admins |
+| `lib/db/seed-admin.ts` | Auto-seeding from env vars |
+| `app/admin/login/page.tsx` | Dedicated admin login page |
+| `app/admin/page.tsx` | Server component with SYSTEM_ADMIN guard |
+| `components/auth/AdminLoginForm.tsx` | Admin login form |
+| `components/admin/AdminDashboard.tsx` | Client component with org list + drill-down |
+| `lib/errors/admin.ts` | Hebrew labels and error messages |
+
+### User Management API
+
+Endpoints for managing users within an organization. Requires authentication as CISO, MANAGER, or SYSTEM_ADMIN.
+
+#### `GET /api/users`
+
+List all users in the caller's organization.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": "...",
+      "email": "user@company.com",
+      "name": "User Name",
+      "role": "EMPLOYEE",
+      "mustChangePassword": false,
+      "createdAt": "2026-08-19T...",
+      "updatedAt": "2026-08-19T..."
+    }
+  ]
+}
+```
+
+SYSTEM_ADMIN can query any org via `?organizationId=<id>`.
+
+#### `POST /api/users`
+
+Create a new user in the caller's organization.
+
+**Request Body:**
+
+```json
+{
+  "email": "newuser@company.com",
+  "name": "New User",
+  "role": "EMPLOYEE"
+}
+```
+
+**Role Permissions:**
+
+| Creator Role | Can Create |
+| --- | --- |
+| MANAGER | EMPLOYEE, MANAGER |
+| CISO | EMPLOYEE, MANAGER, CISO |
+| SYSTEM_ADMIN | EMPLOYEE, MANAGER, CISO |
+
+**Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": "...",
+    "email": "newuser@company.com",
+    "name": "New User",
+    "role": "EMPLOYEE",
+    "mustChangePassword": true,
+    "createdAt": "2026-08-19T..."
+  },
+  "message": "המשתמש נוצר בהצלחה. סיסמה זמנית נשלחה לאימייל."
+}
+```
+
+**Error Responses:**
+
+| Status | Reason |
+| --- | --- |
+| 400 | Missing or invalid fields (email, name, role) |
+| 401 | Not authenticated |
+| 403 | Not authorized to create users or target role |
+| 409 | Email already exists in organization |
+| 500 | Server error |
+
+**MVP Note:** Temporary passwords are logged to the server console.
+
+### User Management Page (`/users`)
+
+Protected page for CISO and MANAGER to manage organization users.
+
+**Features:**
+- List all users with role badges and status
+- Create new users (respects role creation permissions)
+- Display creation date and password change status
+
+**Access:** CISO, MANAGER, SYSTEM_ADMIN only. Others redirected to `/dashboard`.
+
+### Environment Variables
+
+Add to `.env.local` (see `.env.example`):
+
+```bash
+NEXTAUTH_SECRET=<random-secret-at-least-32-chars>
+NEXTAUTH_URL=http://localhost:3000
+```
+
+Generate a secret: `openssl rand -base64 32` (or PowerShell: random 32 bytes as Base64). Also set `NEXTAUTH_*` on Render for production.
 
 ---
 
@@ -204,13 +615,15 @@ Server-side persistence for AI agent assessment requests. The questionnaire UI s
 
 | Path | Purpose |
 | --- | --- |
-| `lib/types.ts` | Shared enums: `RequestStatus`, `UserRole`, `RequestAction`, plus `AgentAssessmentPayload` |
+| `lib/types.ts` | Shared enums: `RequestStatus`, `UserRole` (incl. SYSTEM_ADMIN), `RequestAction`, `OrgBoundRoles`, plus payload types |
 | `lib/db/mongodb.ts` | `connectDB()` — connects using `MONGODB_URI`, caches for Next.js hot reload |
 | `lib/api/requests.ts` | Client-side helpers: `createRequest()`, `fetchRequests()`, `deleteRequest()`, `applyAction()` with pagination |
 | `lib/errors/authorization.ts` | Hebrew 403 messages + optional redirects (`getAuthorizationErrorInfo`) |
 | `lib/utils/requestHelpers.ts` | Status labels, badge colors, card conversion utilities |
 | `lib/utils/dashboardFilters.ts` | CISO queue view presets (`getCisoQueueView`) |
-| `models/AgentRequest.ts` | Mongoose model (collection: `agent_requests`) |
+| `models/Organization.ts` | Mongoose model for multi-tenant orgs (collection: `organizations`) |
+| `models/User.ts` | Mongoose model for user accounts (collection: `users`) |
+| `models/AgentRequest.ts` | Mongoose model with `organizationId` (collection: `agent_requests`) |
 | `lib/requests/transitions.ts` | `applyTransition()` — state machine; `isAuthorizedForAction()` — role-based auth |
 | `app/api/requests/route.ts` | Collection: create + list with pagination |
 | `app/api/requests/[id]/route.ts` | Item: approve / reject / route / delete |
@@ -695,60 +1108,80 @@ Based on an architectural code review, it is verified that this repository is en
 4. Review risk scenarios.
 5. Save the assessment to MongoDB (internal submit).
 
+### Testing Guide
+
+For comprehensive step-by-step testing instructions with real example credentials, see **[docs/testing-guide.md](docs/testing-guide.md)**.
+
+The testing guide covers:
+- Organization registration and first CISO setup
+- User management (creating Managers and Employees)
+- Complete approval workflow (Employee → CISO → Manager → Final Decision)
+- System admin access and role impersonation
+- Multi-organization isolation testing
+- Troubleshooting common issues
+
 ---
 
-## MVP Testing Mode
+## Admin Role Impersonation (SYSTEM_ADMIN Only)
 
-For the Minimum Viable Product (MVP), the platform includes a **Role Switcher** that allows testing the full approval workflow without requiring a real authentication system.
+SYSTEM_ADMIN users have access to a **Role Impersonation** feature that allows testing the full approval workflow by viewing the dashboard as different roles.
 
-### Why This Approach?
+### Purpose
 
-- **No auth complexity** — Focus on validating the workflow logic first
-- **Instant role switching** — Test all workflow paths quickly
+- **Testing & debugging** — Admins can verify the workflow behaves correctly for each role
+- **Support** — Admins can see exactly what a user would see in their dashboard
 - **Demo capability** — Show stakeholders the full flow in real-time
-- **Easy to replace** — Will be swapped for real auth in production
 
-### Test Users
+### How It Works
 
-The role switcher (yellow banner at the top) provides three predefined test users:
+When logged in as SYSTEM_ADMIN and visiting `/dashboard`:
+1. A purple **"Admin Testing Mode"** banner appears at the top
+2. Use the dropdown to select which role to view as (EMPLOYEE, MANAGER, CISO)
+3. The dashboard content updates to show the selected role's view
+4. Impersonated role is persisted in localStorage for convenience
 
-| Role | User ID | Capabilities |
+**Regular users (EMPLOYEE, MANAGER, CISO)** always see their dashboard based on their actual session role — they never see the role switcher.
+
+### Impersonation Roles
+
+| Role | User ID | View |
 | --- | --- | --- |
-| **EMPLOYEE** | `employee@test.local` | Submit agent assessment requests |
-| **MANAGER** | `manager@test.local` | Provide recommendations when consulted by CISO |
-| **CISO** | `ciso@test.local` | Final decision-maker (approve, reject, route) |
+| **EMPLOYEE** | `employee@test.local` | Submit form + My Requests |
+| **MANAGER** | `manager@test.local` | Submit form + My Requests + Pending Recommendations |
+| **CISO** | `ciso@test.local` | Queue tabs (ממתין לטיפולי, בקשות פעילות, היסטוריה) |
 
-### Quick Test Scenarios
+### Quick Test Scenarios (Admin)
 
-#### Scenario 1: Direct CISO Approval
+#### Scenario 1: Test Direct CISO Approval
 
-1. Select **EMPLOYEE** role
-2. Fill out the assessment form and submit
-3. Switch to **CISO** role
-4. Find the request and click **Approve**
+1. Login as SYSTEM_ADMIN at `/admin/login`
+2. Go to `/dashboard`, select **EMPLOYEE** view
+3. Submit an agent assessment request
+4. Switch to **CISO** view
+5. Find the request and click **Approve**
 
-#### Scenario 2: Manager Consultation Flow
+#### Scenario 2: Test Manager Consultation Flow
 
-1. Select **EMPLOYEE** role → Submit a request
-2. Switch to **CISO** role → Click **Route to Manager**
-3. Switch to **MANAGER** role → Click **Recommend Approve** (or Reject)
-4. Switch to **CISO** role → Make final decision (Approve/Reject)
+1. Select **EMPLOYEE** view → Submit a request
+2. Switch to **CISO** view → Click **Route to Manager**
+3. Switch to **MANAGER** view → Click **Recommend Approve** (or Reject)
+4. Switch to **CISO** view → Make final decision
 
 ### Files Involved
 
 | File | Purpose |
 | --- | --- |
-| `lib/test-users.ts` | Hardcoded test user definitions |
-| `contexts/RoleContext.tsx` | React context for current role state |
-| `components/RoleSwitcher.tsx` | Role selector dropdown UI |
-| `app/providers.tsx` | Client-side providers wrapper |
-| `lib/api/requests.ts` | API helpers including `applyAction()` |
+| `lib/test-users.ts` | Impersonation user definitions |
+| `contexts/RoleContext.tsx` | Admin impersonation state (localStorage) |
+| `components/RoleSwitcher.tsx` | Role selector (visible to SYSTEM_ADMIN only) |
+| `app/dashboard/page.tsx` | Conditional impersonation logic |
+| `app/providers.tsx` | Wraps app with SessionProvider + RoleProvider |
 
 ### Note
 
-> This role switcher is for **MVP/demo purposes only**. In production, it will be replaced with proper user authentication (e.g., OAuth, JWT sessions, or enterprise SSO).
+> **Regular users** always see their actual session role. The role switcher is **only visible to SYSTEM_ADMIN** users.
 >
-> Selected role is cached in browser LocalStorage under `mvp-test-role` for convenience. **Requests and agents are not stored in LocalStorage** — only in MongoDB via `/api/requests`.
+> Impersonated role is cached in browser localStorage under `mvp-test-role`. **Requests and agents are stored in MongoDB only** — localStorage is just for the impersonation selection.
 
 ---
 
@@ -761,12 +1194,12 @@ Role-based dashboard with paginated request queues. Different roles see differen
 | Role | Default Tab | Tabs |
 | --- | --- | --- |
 | EMPLOYEE | Form | הגשת בקשה \| הבקשות שלי |
-| MANAGER | Pending queue | ממתין להמלצתי only (reviewer in MVP) |
+| MANAGER | Form | הגשת בקשה \| הבקשות שלי \| ממתין להמלצתי |
 | CISO | ממתין לטיפולי | ממתין לטיפולי \| בקשות פעילות \| היסטוריית אישורים |
 
 **Key UX Rules:**
-- Only employees see the questionnaire form
-- Manager is a reviewer only in MVP (no form, no "my requests", no org-wide history)
+- Employees and managers share the same form + "my requests" UI (no duplicated components)
+- Manager also has a reviewer inbox (ממתין להמלצתי) as the third tab
 - CISO gets quick filter tabs for oversight (CISO-only)
 - All queues are paginated (10 items per page, prev/next)
 
@@ -850,9 +1283,9 @@ Response includes pagination metadata:
 | `HistoryStatusFilters` | History filters: הכל / מאושרות▾ / נדחו |
 | `RequestQueue` | Paginated request list with role-specific actions + optional CISO↔manager notes |
 | `RequestAnswersPanel` | Read-only questionnaire answers inside expanded cards |
-| `CorrespondencePanel` | Collapsible CISO↔manager thread + optional compose field (`להתכתבות עם המנהל` / `להתכתבות עם ה-CISO`) |
+| `CorrespondencePanel` | Collapsible CISO↔manager thread + optional compose (`להתכתבות עם המנהל` / `להתכתבות עם ה-CISO`); hidden from employees |
 | `Pagination` | Prev/next controls with page indicator |
-| `AgentForm` | Questionnaire form + approved agents (employee) |
+| `AgentForm` | Questionnaire form + approved agents (employee + manager) |
 | `FieldHelpTooltip` | (?) hover help on employee form fields |
 | `questionnaire/fields.ts` | Questions, options, and short ABCM/gov tooltips |
 
@@ -885,8 +1318,8 @@ This fulfills the “context panel” review need via card expansion + answers t
 
 | Tab | API Filter | Shows |
 | --- | --- | --- |
-| הגשת בקשה (employee) | approved agents for current user | Form + approved agents |
-| הבקשות שלי (employee) | `submittedByUserId = currentUser.id` | All request statuses |
+| הגשת בקשה (employee/manager) | approved agents for current user | Form + approved agents |
+| הבקשות שלי (employee/manager) | `submittedByUserId = currentUser.id` | All request statuses |
 | ממתין להמלצתי (manager) | `assignedTo=MANAGER` + `assignedToUserId` | Pending recommendations |
 | ממתין לטיפולי (CISO) | `assignedTo=CISO` | Needs CISO action |
 | בקשות פעילות (CISO) | `PENDING_CISO,PENDING_MANAGER` | Open pipeline |

@@ -111,6 +111,7 @@ export function isValidUserRole(value: unknown): value is UserRoleType {
  * - CISO: Can approve, reject, or route to manager
  * - MANAGER: Can only recommend (approve/reject) when consulted
  * - EMPLOYEE: Cannot perform any workflow actions (submit only)
+ * - SYSTEM_ADMIN: No request-workflow actions (org maintenance only)
  */
 const ROLE_PERMISSIONS: Record<UserRoleType, RequestActionType[]> = {
   [UserRole.CISO]: [
@@ -123,6 +124,7 @@ const ROLE_PERMISSIONS: Record<UserRoleType, RequestActionType[]> = {
     RequestAction.RECOMMEND_REJECT,
   ],
   [UserRole.EMPLOYEE]: [],
+  [UserRole.SYSTEM_ADMIN]: [],
 };
 
 /**

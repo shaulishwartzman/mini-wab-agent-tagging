@@ -1,15 +1,20 @@
 /**
- * Hardcoded test users for MVP testing mode.
+ * Impersonation user definitions for SYSTEM_ADMIN testing.
  *
- * PURPOSE: Allows testing the full approval workflow without a real
- * authentication system. Each user represents a different role in the
- * CISO-final approval workflow.
+ * PURPOSE: Allows SYSTEM_ADMIN users to impersonate different roles
+ * (EMPLOYEE, MANAGER, CISO) in the dashboard for testing and debugging
+ * the approval workflow.
  *
- * NOTE: This is for MVP/demo purposes only. In production, this will be
- * replaced with proper authentication and user management.
+ * Each entry represents a role that can be impersonated:
+ * - EMPLOYEE: Can submit agent assessment requests
+ * - MANAGER: Can submit requests and recommend when consulted
+ * - CISO: Final decision-maker for all requests
  *
- * @see contexts/RoleContext.tsx - Uses these definitions
- * @see components/RoleSwitcher.tsx - UI for switching between users
+ * NOTE: Only SYSTEM_ADMIN users can use this feature. Regular users
+ * always see their dashboard based on their actual authenticated role.
+ *
+ * @see contexts/RoleContext.tsx - Admin impersonation context
+ * @see components/RoleSwitcher.tsx - Admin UI for role switching
  */
 
 import { UserRole } from "@/lib/types";
@@ -32,7 +37,7 @@ export type TestUser = {
  * Predefined test users for MVP testing.
  *
  * - EMPLOYEE: Can submit agent assessment requests
- * - MANAGER: Can provide recommendations when consulted by CISO
+ * - MANAGER: Can submit requests; can recommend when consulted by CISO
  * - CISO: Final decision-maker; can approve, reject, or route to manager
  */
 export const TEST_USERS: Record<string, TestUser> = {
@@ -46,7 +51,7 @@ export const TEST_USERS: Record<string, TestUser> = {
     id: "manager@test.local",
     role: UserRole.MANAGER,
     name: "Test Manager",
-    description: "Can recommend approval/rejection when consulted",
+    description: "Can submit requests and recommend when consulted",
   },
   ciso: {
     id: "ciso@test.local",

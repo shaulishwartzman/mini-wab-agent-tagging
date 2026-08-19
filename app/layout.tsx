@@ -2,10 +2,11 @@
  * Root layout for the AI Governance & Agent Risk Assessment Platform.
  *
  * STRUCTURE:
- * - Providers: Client-side context providers (RoleProvider for MVP testing)
+ * - Providers: SessionProvider (NextAuth) + RoleProvider (MVP temporary)
  * - Children: Page content
  *
  * @see app/providers.tsx - Client-side providers wrapper
+ * @see lib/auth/auth-options.ts - NextAuth configuration
  */
 
 import type { Metadata } from "next";

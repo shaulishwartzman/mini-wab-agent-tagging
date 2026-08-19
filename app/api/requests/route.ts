@@ -18,6 +18,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db/mongodb";
 import AgentRequest from "@/models/AgentRequest";
+import User from "@/models/User";
 import {
   RequestStatus,
   UserRole,
@@ -65,12 +66,52 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!body.submittedByUserId) {
+      return NextResponse.json(
+        { success: false, error: "Missing submittedByUserId" },
+        { status: 400 },
+      );
+    }
+
     await connectDB();
+
+    // Look up the user to get their organizationId (required for multi-tenant isolation)
+    // submittedByUserId is typically the user's MongoDB _id, but handle email fallback
+    let user;
+    try {
+      // Try as ObjectId first
+      user = await User.findById(body.submittedByUserId).lean();
+    } catch {
+      // If that fails (not a valid ObjectId), try as email
+      user = await User.findOne({ email: body.submittedByUserId }).lean();
+    }
+    
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 },
+      );
+    }
+
+    if (!user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "User has no organization" },
+        { status: 400 },
+      );
+    }
+
+    console.log("👤 Creating request for user:", {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
 
     const autoApprove = body.autoApprove === true;
 
     const request = await AgentRequest.create({
       agentName: body.agentName.trim(),
+      organizationId: user.organizationId,
       answers: body.answers ?? {},
       classification: body.classification ?? {},
       agentLevel: body.agentLevel ?? "",
@@ -83,7 +124,8 @@ export async function POST(req: Request) {
         ? RequestStatus.AUTO_APPROVED
         : RequestStatus.PENDING_CISO,
       assignedTo: autoApprove ? null : UserRole.CISO,
-      submittedByUserId: body.submittedByUserId ?? "",
+      submittedByUserId: body.submittedByUserId,
+      submittedByName: user.name,
       agentPurpose: body.agentPurpose ?? "",
       autoApprovalEligible: body.autoApprovalEligible ?? false,
       autoApprovalReason: body.autoApprovalReason ?? null,
@@ -95,7 +137,8 @@ export async function POST(req: Request) {
       { success: true, request },
       { status: 201 },
     );
-  } catch {
+  } catch (err) {
+    console.error("POST /api/requests error:", err);
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 },

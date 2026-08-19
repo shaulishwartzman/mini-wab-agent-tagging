@@ -20,9 +20,12 @@
  * @see components/FieldHelpTooltip.tsx - Hover help next to questions
  * @see components/questionnaire/fields.ts - Field definitions + tooltips
  * @see components/RequestQueue.tsx - For tracking request status (הבקשות שלי tab)
+ *
+ * Used by Employee and Manager (shared submitter UI).
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { fields } from "@/components/questionnaire/fields";
 import { FieldHelpTooltip } from "@/components/FieldHelpTooltip";
 import { createAgentCard } from "@/lib/agent-engine/createAgentCard";
@@ -30,7 +33,6 @@ import { createRequest, fetchRequests, deleteRequest } from "@/lib/api/requests"
 import { evaluateForAutoApproval } from "@/lib/auto-approval/rulesEngine";
 import { toCustomCriteria } from "@/lib/auto-approval/greenPathCriteria";
 import { fetchGreenPathSettings } from "@/lib/api/greenPathSettings";
-import { useRole } from "@/contexts/RoleContext";
 import {
   toAgentCard,
   getReadableAnswer,
@@ -237,7 +239,7 @@ function RenderPrettyCard({
 }
 
 export default function AgentForm() {
-  const { currentUser } = useRole();
+  const { data: session } = useSession();
   const [agentName, setAgentName] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<AgentCard | null>(null);
@@ -254,8 +256,13 @@ export default function AgentForm() {
     boolean | null
   >(null);
 
+  // Get current user from session
+  const currentUser = session?.user;
+
   /** Load approved agents for current user from MongoDB. */
   const loadAgents = useCallback(async () => {
+    if (!currentUser?.id) return;
+    
     setLoading(true);
     setError(null);
     const res = await fetchRequests({
@@ -275,7 +282,7 @@ export default function AgentForm() {
       setError(res.error || "Failed to load agents");
     }
     setLoading(false);
-  }, [currentUser.id]);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     loadAgents();
@@ -295,6 +302,12 @@ export default function AgentForm() {
   /** Submit form: evaluate for auto-approval, create card, POST to API, refresh list. */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!currentUser?.id || !currentUser?.role) {
+      setError("User session not found. Please refresh and try again.");
+      return;
+    }
+    
     setSubmitting(true);
     setError(null);
     setSuccessMsg(null);
@@ -313,7 +326,7 @@ export default function AgentForm() {
 
     // Step 3: Create the agent card
     const card = createAgentCard({
-      agentName,
+      agentName: agentName.trim(),
       answers,
       fields,
     });
@@ -328,6 +341,7 @@ export default function AgentForm() {
       governance: card.governance,
       riskScenarios: card.riskScenarios,
       submittedByUserId: currentUser.id,
+      submittedByRole: currentUser.role,
       autoApprove: evaluation.eligible,
       autoApprovalEligible: evaluation.eligible,
       autoApprovalReason: evaluation.reason,
@@ -359,6 +373,24 @@ export default function AgentForm() {
       setError(res.error || "Failed to delete");
     }
   };
+
+  // Show loading state while session loads
+  if (!currentUser) {
+    return (
+      <div
+        style={{
+          maxWidth: 900,
+          margin: "0 auto",
+          padding: "40px 20px",
+          textAlign: "center",
+          color: theme.textMuted,
+        }}
+        dir="rtl"
+      >
+        טוען...
+      </div>
+    );
+  }
 
   return (
     <div
@@ -420,6 +452,7 @@ export default function AgentForm() {
             placeholder="לדוגמה: מערכת תמלול פניות לקוחות, בוט פיתוח פנימי..."
             value={agentName}
             onChange={(e) => setAgentName(e.target.value)}
+            onBlur={(e) => setAgentName(e.target.value.trim())}
             required
             style={{
               width: "100%",
@@ -468,6 +501,7 @@ export default function AgentForm() {
                   type="text"
                   value={answers[q.question_id] || ""}
                   onChange={(e) => handleChange(q.question_id, e.target.value)}
+                  onBlur={(e) => handleChange(q.question_id, e.target.value.trim())}
                   style={{
                     width: "100%",
                     padding: "12px 16px",

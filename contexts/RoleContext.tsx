@@ -1,20 +1,24 @@
 "use client";
 
 /**
- * React Context for MVP testing role management.
+ * React Context for SYSTEM_ADMIN role impersonation.
  *
- * PURPOSE: Provides the current test user (role) to all components without
- * requiring a real authentication system. Persists selection in localStorage.
+ * PURPOSE: Allows SYSTEM_ADMIN users to impersonate different roles
+ * (EMPLOYEE, MANAGER, CISO) in the dashboard for testing and debugging.
+ * Persists selection in localStorage.
  *
  * USAGE:
- * 1. Wrap app with <RoleProvider> in layout.tsx
- * 2. Use useRole() hook in components to access currentUser and setRole
+ * 1. App is wrapped with <RoleProvider> via providers.tsx
+ * 2. Dashboard checks if user is SYSTEM_ADMIN
+ * 3. If admin: uses this context for role (impersonation)
+ * 4. If regular user: uses session role directly (ignores this context)
  *
- * NOTE: This is for MVP/demo purposes only. In production, this will be
- * replaced with proper authentication context.
+ * NOTE: Regular users never see the RoleSwitcher. Their dashboard
+ * is always based on their actual authenticated role.
  *
- * @see lib/test-users.ts - Test user definitions
- * @see components/RoleSwitcher.tsx - UI for switching roles
+ * @see lib/test-users.ts - Impersonation user definitions
+ * @see components/RoleSwitcher.tsx - Admin UI for switching roles
+ * @see app/dashboard/page.tsx - Conditional impersonation logic
  */
 
 import {

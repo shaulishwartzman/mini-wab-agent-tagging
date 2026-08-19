@@ -44,7 +44,7 @@ export default function GreenPathSettingsPage() {
         >
           <div style={{ marginBottom: 16 }}>
             <Link
-              href="/"
+              href="/dashboard"
               style={{
                 display: "inline-block",
                 padding: "8px 14px",
@@ -56,7 +56,7 @@ export default function GreenPathSettingsPage() {
                 textDecoration: "none",
               }}
             >
-              ← חזרה לדאשבורד
+              ← חזרה ללוח הבקרה
             </Link>
           </div>
 

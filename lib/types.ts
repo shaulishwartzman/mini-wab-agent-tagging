@@ -26,14 +26,32 @@ export type RequestStatus =
 
 /**
  * Organizational roles in the approval workflow.
+ *
+ * - `EMPLOYEE` — Can submit agent assessment requests
+ * - `MANAGER` — Can submit requests; can recommend when consulted by CISO; can create users
+ * - `CISO` — Final decision-maker; can approve, reject, route to manager; can create users
+ * - `SYSTEM_ADMIN` — System-wide admin; not bound to any organization; can view all orgs
+ *
  * `assignedTo` on a request indicates which role's inbox the item sits in.
  */
 export const UserRole = {
   EMPLOYEE: "EMPLOYEE",
   MANAGER: "MANAGER",
   CISO: "CISO",
+  SYSTEM_ADMIN: "SYSTEM_ADMIN",
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
+/**
+ * Roles that belong to an organization (excludes SYSTEM_ADMIN).
+ * Used for validation when creating users within an org context.
+ */
+export const OrgBoundRoles = [
+  UserRole.EMPLOYEE,
+  UserRole.MANAGER,
+  UserRole.CISO,
+] as const;
+export type OrgBoundRole = (typeof OrgBoundRoles)[number];
 
 /**
  * Allowed PATCH/PUT actions that drive status transitions.
@@ -110,10 +128,18 @@ export type AgentCard = {
 /**
  * Assessment payload aligned with `createAgentCard` / AgentCard.
  * Sent on `POST /api/requests` (fields beyond `agentName` are optional).
+ *
+ * Note: `organizationId` is typically injected server-side from the user's session,
+ * not provided by the client. It's optional here for type flexibility.
  */
 export type AgentAssessmentPayload = {
   /** Display name of the AI agent / system being assessed. */
   agentName: string;
+  /**
+   * Organization ID this request belongs to.
+   * Injected from session on the server; not typically sent by client.
+   */
+  organizationId?: string;
   /** Raw questionnaire answers keyed by question_id. */
   answers?: Record<string, string>;
   /** Classification codes (A# / B# / C# / M#). */
@@ -128,6 +154,8 @@ export type AgentAssessmentPayload = {
   riskScenarios?: string[];
   /** User ID (email) of who submitted. */
   submittedByUserId?: string;
+  /** Role of the submitter (Employee or Manager when self-submitting). */
+  submittedByRole?: UserRole;
   /** Free-text description of agent's purpose (for CISO context, not auto-approval). */
   agentPurpose?: string;
   /** Whether this request qualifies for green-path auto-approval. */
@@ -144,6 +172,8 @@ export type AgentAssessmentPayload = {
  */
 export type AgentRequestResponse = {
   _id: string;
+  /** Organization this request belongs to (for multi-tenant isolation). */
+  organizationId: string;
   agentName: string;
   answers: Record<string, string>;
   classification: Classification;
@@ -158,6 +188,7 @@ export type AgentRequestResponse = {
   createdAt: string;
   updatedAt: string;
   submittedByUserId: string;
+  submittedByName: string;
   assignedToUserId: string | null;
   agentPurpose: string;
   approvedBy: string | null;

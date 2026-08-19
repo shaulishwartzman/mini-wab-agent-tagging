@@ -1,15 +1,15 @@
 /**
  * CorrespondencePanel — collapsible CISO↔manager correspondence.
  *
- * Hidden behind a role-specific toggle so request cards stay compact:
+ * Visible only to CISO and Manager (not employees). Hidden behind a
+ * role-specific toggle so request cards stay compact:
  * - CISO: ▼ להתכתבות עם המנהל
  * - Manager: ▼ להתכתבות עם ה-CISO
- * - Other: ▼ להתכתבות CISO ↔ מנהל
  *
  * When expanded: past notes (if any) + optional compose textarea (when allowed).
  * Renders nothing when there is no history and compose is disabled.
  *
- * @see components/RequestQueue.tsx - Parent expand panel
+ * @see components/RequestQueue.tsx - Parent expand panel (gates by role)
  * @see lib/utils/requestHelpers.ts - getRoutingActionLabel(), formatDate()
  */
 
@@ -22,11 +22,16 @@ import {
   getRoutingActionLabel,
 } from "@/lib/utils/requestHelpers";
 
+/** Roles allowed to view / compose CISO↔manager correspondence. */
+export type CorrespondenceViewerRole =
+  | typeof UserRole.CISO
+  | typeof UserRole.MANAGER;
+
 export type CorrespondencePanelProps = {
   /** Full routing history; only entries with non-empty notes are shown. */
   routingHistory: RoutingHistoryEntry[] | undefined;
   /** Viewer role — drives the toggle label and compose placeholder. */
-  viewerRole: (typeof UserRole)[keyof typeof UserRole];
+  viewerRole: CorrespondenceViewerRole;
   /** When true, show an optional note textarea inside the dropdown. */
   canCompose?: boolean;
   /** Draft note value (controlled by parent). */
@@ -38,35 +43,24 @@ export type CorrespondencePanelProps = {
 };
 
 function getToggleLabel(
-  viewerRole: CorrespondencePanelProps["viewerRole"],
+  viewerRole: CorrespondenceViewerRole,
   expanded: boolean
 ): string {
-  const closed =
-    viewerRole === UserRole.CISO
-      ? "▼ להתכתבות עם המנהל"
-      : viewerRole === UserRole.MANAGER
-        ? "▼ להתכתבות עם ה-CISO"
-        : "▼ להתכתבות CISO ↔ מנהל";
-
-  if (!expanded) return closed;
-
-  return viewerRole === UserRole.CISO
-    ? "▲ הסתר התכתבות עם המנהל"
-    : viewerRole === UserRole.MANAGER
-      ? "▲ הסתר התכתבות עם ה-CISO"
-      : "▲ הסתר התכתבות";
+  if (viewerRole === UserRole.CISO) {
+    return expanded
+      ? "▲ הסתר התכתבות עם המנהל"
+      : "▼ להתכתבות עם המנהל";
+  }
+  return expanded
+    ? "▲ הסתר התכתבות עם ה-CISO"
+    : "▼ להתכתבות עם ה-CISO";
 }
 
-function getComposePlaceholder(
-  viewerRole: CorrespondencePanelProps["viewerRole"]
-): string {
+function getComposePlaceholder(viewerRole: CorrespondenceViewerRole): string {
   if (viewerRole === UserRole.CISO) {
     return "הערה או שאלה למנהל (אופציונלי)";
   }
-  if (viewerRole === UserRole.MANAGER) {
-    return "הערה או תשובה ל-CISO (אופציונלי)";
-  }
-  return "הערה (אופציונלי)";
+  return "הערה או תשובה ל-CISO (אופציונלי)";
 }
 
 /**

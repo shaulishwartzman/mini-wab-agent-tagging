@@ -6,9 +6,14 @@
  *
  * Requires `MONGODB_URI` in `.env.local`. Use only from server-side code
  * (API routes, Server Actions, Server Components) — never from the browser.
+ *
+ * On first connection, auto-seeds SYSTEM_ADMIN from env vars if configured.
+ *
+ * @see lib/db/seed-admin.ts - Auto-seeding logic
  */
 
 import mongoose from "mongoose";
+import { seedAdminFromEnv } from "./seed-admin";
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -38,6 +43,9 @@ global.mongooseCache = cached;
 /**
  * Connect to MongoDB Atlas (or reuse an existing cached connection).
  *
+ * On first connection, auto-seeds SYSTEM_ADMIN from environment variables
+ * if SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD are configured.
+ *
  * @returns The shared Mongoose instance after a successful connection
  */
 export async function connectDB(): Promise<typeof mongoose> {
@@ -46,7 +54,10 @@ export async function connectDB(): Promise<typeof mongoose> {
   }
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI!);
+    cached.promise = mongoose.connect(MONGODB_URI!).then(async (conn) => {
+      await seedAdminFromEnv();
+      return conn;
+    });
   }
 
   cached.conn = await cached.promise;

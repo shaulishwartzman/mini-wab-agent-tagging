@@ -7,7 +7,12 @@
  * Combines questionnaire / AgentCard assessment fields with workflow metadata
  * (`status`, `assignedTo`). Timestamps (`createdAt`, `updatedAt`) are enabled.
  *
+ * Multi-tenant: Each request belongs to an organization (`organizationId`).
+ * All queries should filter by organizationId to maintain data isolation.
+ *
  * Hot-reload safe: reuses `mongoose.models.AgentRequest` when present.
+ *
+ * @see models/Organization.ts - Organization that owns this request
  */
 
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
@@ -52,6 +57,19 @@ const routingHistoryEntrySchema = new Schema(
 const agentRequestSchema = new Schema(
   {
     agentName: { type: String, required: true, trim: true },
+
+    /**
+     * Reference to the organization this request belongs to.
+     * Required for multi-tenant data isolation.
+     * All queries must filter by this field.
+     */
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: "Organization",
+      required: [true, "Organization is required"],
+      index: true,
+    },
+
     /** Flexible map of questionnaire answers (question_id → value). */
     answers: { type: Schema.Types.Mixed, default: {} },
     classification: { type: classificationSchema, default: () => ({}) },
@@ -86,6 +104,9 @@ const agentRequestSchema = new Schema(
     /** User ID (email) of who submitted the request. */
     submittedByUserId: { type: String, default: "" },
 
+    /** Name of the user who submitted the request (for display). */
+    submittedByName: { type: String, default: "" },
+
     /** Specific user ID assigned (for manager routing — current inbox holder). */
     assignedToUserId: { type: String, default: null },
 
@@ -119,6 +140,15 @@ const agentRequestSchema = new Schema(
     collection: "agent_requests",
   },
 );
+
+/** Compound index for querying requests by org + status (dashboard queues). */
+agentRequestSchema.index({ organizationId: 1, status: 1 });
+
+/** Compound index for querying requests by org + assignedTo (role inbox). */
+agentRequestSchema.index({ organizationId: 1, assignedTo: 1 });
+
+/** Compound index for querying requests by org + submittedByUserId (user's requests). */
+agentRequestSchema.index({ organizationId: 1, submittedByUserId: 1 });
 
 /** Document shape inferred from the schema, plus Mongo `_id`. */
 export type AgentRequestDocument = InferSchemaType<typeof agentRequestSchema> & {

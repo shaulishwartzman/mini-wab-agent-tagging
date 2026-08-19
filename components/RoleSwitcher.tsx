@@ -1,25 +1,28 @@
 "use client";
 
 /**
- * Role switcher component for MVP testing mode.
+ * Role switcher component for SYSTEM_ADMIN testing mode.
  *
- * PURPOSE: Allows testers/developers to switch between different roles
- * (EMPLOYEE, MANAGER, CISO) to test the full approval workflow without
- * needing real authentication.
+ * PURPOSE: Allows system administrators to impersonate different roles
+ * (EMPLOYEE, MANAGER, CISO) to test the approval workflow without
+ * needing to log in as different users.
  *
  * FEATURES:
+ * - Only visible to authenticated SYSTEM_ADMIN users
  * - Dropdown to select test user/role
- * - Visual indicator showing current role with colored badge
- * - "MVP Testing Mode" label for clarity
+ * - Visual indicator showing current impersonated role
+ * - "Admin Testing Mode" label for clarity
  * - Persists selection via RoleContext (localStorage)
  *
- * NOTE: This component is for MVP/demo purposes only. It will be removed
- * or replaced when proper authentication is implemented.
+ * NOTE: Regular users (EMPLOYEE, MANAGER, CISO) see the dashboard
+ * based on their actual session role, without this switcher.
  *
  * @see contexts/RoleContext.tsx - Provides role state management
  * @see lib/test-users.ts - Test user definitions
+ * @see app/dashboard/page.tsx - Uses this for admin impersonation
  */
 
+import { useSession } from "next-auth/react";
 import { useRole } from "@/contexts/RoleContext";
 import { TEST_USERS } from "@/lib/test-users";
 import { UserRole } from "@/lib/types";
@@ -46,14 +49,23 @@ const ROLE_COLORS: Record<string, { bg: string; text: string; border: string }> 
 /**
  * Role switcher dropdown component.
  *
- * Displays current role and allows switching between test users.
- * Shows "MVP Testing Mode" indicator.
+ * Only renders for SYSTEM_ADMIN users. Allows impersonation of
+ * different roles for testing the approval workflow.
+ *
+ * @returns Role switcher UI for admins, null for other users
  */
 export function RoleSwitcher() {
+  const { data: session, status } = useSession();
   const { currentUser, currentRoleKey, setRole, isLoaded } = useRole();
   const testUserEntries = Object.entries(TEST_USERS);
 
-  if (!isLoaded) {
+  // Only show for authenticated SYSTEM_ADMIN users
+  if (status === "loading" || !isLoaded) {
+    return null;
+  }
+
+  // Hide for non-admin users
+  if (!session?.user || session.user.role !== UserRole.SYSTEM_ADMIN) {
     return null;
   }
 
@@ -66,12 +78,12 @@ export function RoleSwitcher() {
         alignItems: "center",
         gap: "16px",
         padding: "12px 20px",
-        backgroundColor: "#fef3c7",
-        borderBottom: "2px solid #f59e0b",
+        backgroundColor: "#f5f3ff",
+        borderBottom: "2px solid #7c3aed",
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
     >
-      {/* MVP Testing Mode Label */}
+      {/* Admin Testing Mode Label */}
       <div
         style={{
           display: "flex",
@@ -83,20 +95,20 @@ export function RoleSwitcher() {
           style={{
             fontSize: "12px",
             fontWeight: "600",
-            color: "#92400e",
+            color: "#5b21b6",
             textTransform: "uppercase",
             letterSpacing: "0.05em",
           }}
         >
-          MVP Testing Mode
+          Admin Testing Mode
         </span>
         <span
           style={{
             fontSize: "11px",
-            color: "#b45309",
+            color: "#7c3aed",
           }}
         >
-          (No authentication required)
+          (Impersonating role)
         </span>
       </div>
 
@@ -105,7 +117,7 @@ export function RoleSwitcher() {
         style={{
           width: "1px",
           height: "24px",
-          backgroundColor: "#f59e0b",
+          backgroundColor: "#7c3aed",
         }}
       />
 
@@ -122,10 +134,10 @@ export function RoleSwitcher() {
           style={{
             fontSize: "13px",
             fontWeight: "500",
-            color: "#78350f",
+            color: "#5b21b6",
           }}
         >
-          Viewing as:
+          View as:
         </label>
 
         <select
@@ -173,7 +185,7 @@ export function RoleSwitcher() {
         style={{
           marginLeft: "auto",
           fontSize: "12px",
-          color: "#78350f",
+          color: "#5b21b6",
           fontStyle: "italic",
         }}
       >
@@ -182,3 +194,4 @@ export function RoleSwitcher() {
     </div>
   );
 }
+
