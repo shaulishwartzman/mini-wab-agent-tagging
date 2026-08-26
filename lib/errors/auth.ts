@@ -61,6 +61,29 @@ export const ChangePasswordErrors = {
   success: "הסיסמה עודכנה בהצלחה.",
 } as const;
 
+/** Forgot password form / API client messages. */
+export const ForgotPasswordErrors = {
+  missingFields: "נא למלא את כל השדות / Please fill all fields",
+  invalidEmail: "כתובת מייל לא תקינה / Invalid email address",
+  requestSent:
+    "אם המייל קיים במערכת, נשלח קישור לאיפוס סיסמה / If email exists, reset link sent",
+  rateLimitExceeded:
+    "יותר מדי בקשות. נסו שוב בעוד דקה / Too many requests. Try again in 1 minute",
+  serverError: "שגיאת שרת / Server error",
+} as const;
+
+/** Reset password form / API client messages. */
+export const ResetPasswordErrors = {
+  missingFields: "נא למלא את כל השדות / Please fill all fields",
+  invalidToken:
+    "קישור לא תקין או פג תוקפו / Invalid or expired reset link",
+  passwordTooShort:
+    "הסיסמה חייבת להיות לפחות 8 תווים / Password must be at least 8 characters",
+  passwordsDoNotMatch: "הסיסמאות אינן זהות / Passwords do not match",
+  success: "הסיסמה עודכנה בהצלחה / Password reset successful",
+  serverError: "שגיאת שרת / Server error",
+} as const;
+
 /**
  * Prefer an API-provided message; otherwise use the fallback constant.
  *

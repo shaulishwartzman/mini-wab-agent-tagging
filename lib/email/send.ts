@@ -11,6 +11,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { tempPasswordEmailTemplate } from './templates/temp-password';
+import { verificationCodeEmailTemplate } from './templates/verification-code';
 
 /**
  * SMTP transporter configured from environment variables.
@@ -180,5 +181,96 @@ Login at: ${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/login
   } catch (err) {
     console.error(`❌ Failed to send email to ${to}:`, err);
     // Don't throw - user creation should succeed even if email fails
+  }
+}
+
+/**
+ * Parameters for sending verification code email.
+ */
+export interface SendVerificationCodeEmailParams {
+  /** Recipient email address */
+  to: string;
+  /** Recipient name */
+  name: string;
+  /** Organization name */
+  organizationName: string;
+  /** 6-digit verification code */
+  verificationCode: string;
+}
+
+/**
+ * Send verification code email for password reset.
+ * The code expires in 15 minutes.
+ * 
+ * @example
+ * await sendVerificationCodeEmail({
+ *   to: 'user@example.com',
+ *   name: 'John Doe',
+ *   organizationName: 'Acme Corp',
+ *   verificationCode: '123456',
+ * });
+ */
+export async function sendVerificationCodeEmail(
+  params: SendVerificationCodeEmailParams
+): Promise<void> {
+  const { to, name, organizationName, verificationCode } = params;
+
+  try {
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+      console.warn(
+        `⚠️  SMTP not configured - verification code email not sent to ${to}`
+      );
+      console.warn(
+        '   Set SMTP_HOST, SMTP_USER, SMTP_PASS in .env.local to enable emails'
+      );
+      console.log(`🔢 Verification code for ${to}: ${verificationCode}`);
+      return;
+    }
+
+    const mailer = getTransporter();
+    const html = verificationCodeEmailTemplate({
+      name,
+      organizationName,
+      verificationCode,
+    });
+
+    const fromAddress =
+      process.env.EMAIL_FROM_ADDRESS || process.env.SMTP_USER;
+    const fromName = process.env.EMAIL_FROM_NAME || 'AI Governance Platform';
+
+    await mailer.sendMail({
+      from: `"${fromName}" <${fromAddress}>`,
+      to,
+      subject: `קוד אימות לאיפוס סיסמה / Password Reset Code - ${organizationName}`,
+      html,
+      text: `
+שלום ${name},
+
+קיבלנו בקשה לאיפוס הסיסמה שלך עבור ${organizationName}.
+
+קוד האימות שלך הוא: ${verificationCode}
+
+קוד זה תקף ל-15 דקות בלבד.
+
+אם לא ביקשתם לאפס את הסיסמה, התעלמו ממייל זה.
+
+---
+
+Hello ${name},
+
+We received a password reset request for your account at ${organizationName}.
+
+Your verification code is: ${verificationCode}
+
+This code expires in 15 minutes.
+
+If you didn't request this, please ignore this email.
+      `.trim(),
+    });
+
+    console.log(`✅ Verification code email sent successfully to ${to}`);
+  } catch (err) {
+    console.error(`❌ Failed to send verification code email to ${to}:`, err);
+    console.log(`🔢 Verification code for ${to}: ${verificationCode}`);
   }
 }

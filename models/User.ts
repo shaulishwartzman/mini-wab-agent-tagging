@@ -17,7 +17,7 @@
  * @see lib/types.ts - UserRole enum definition
  */
 
-import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import mongoose, { Schema, type InferSchemaType, type Model, type HydratedDocument } from "mongoose";
 import { UserRole, OrgBoundRoles } from "@/lib/types";
 
 const userSchema = new Schema(
@@ -104,6 +104,36 @@ const userSchema = new Schema(
     mustChangePassword: {
       type: Boolean,
       default: true,
+    },
+
+    /**
+     * Password reset token (cryptographically secure random string).
+     * Generated when user requests password reset.
+     * Stored as hashed SHA-256 value for security.
+     */
+    resetPasswordToken: {
+      type: String,
+      default: null,
+      select: false, // Don't include in queries by default
+    },
+
+    /**
+     * When the reset token expires (1 hour from generation).
+     * Token is invalid after this time.
+     */
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
+    /**
+     * When user last requested a password reset.
+     * Used for rate limiting (max 3 requests per hour).
+     */
+    lastPasswordResetRequest: {
+      type: Date,
+      default: null,
     },
 
     /**
@@ -209,6 +239,17 @@ userSchema.statics.findSystemAdmin = async function (email: string) {
   }).select("+password");
 };
 
+/**
+ * Static method to find user by reset token.
+ * Only returns users with valid (non-expired) tokens.
+ */
+userSchema.statics.findByResetToken = async function (token: string) {
+  return this.findOne({
+    resetPasswordToken: token,
+    resetPasswordExpires: { $gt: new Date() },
+  }).select("+resetPasswordToken +resetPasswordExpires +password");
+};
+
 /** Document shape inferred from the schema, plus Mongo `_id` and methods. */
 export type UserDocument = InferSchemaType<typeof userSchema> & {
   _id: mongoose.Types.ObjectId;
@@ -217,13 +258,17 @@ export type UserDocument = InferSchemaType<typeof userSchema> & {
   comparePassword(candidatePassword: string): Promise<boolean>;
 };
 
+/** Hydrated document type with Mongoose methods like save() */
+export type UserDocumentWithMethods = HydratedDocument<UserDocument>;
+
 /** Model interface with static methods. */
 interface UserModel extends Model<UserDocument> {
   findByEmailAndOrg(
     email: string,
     organizationId: mongoose.Types.ObjectId
-  ): Promise<UserDocument | null>;
-  findSystemAdmin(email: string): Promise<UserDocument | null>;
+  ): Promise<UserDocumentWithMethods | null>;
+  findSystemAdmin(email: string): Promise<UserDocumentWithMethods | null>;
+  findByResetToken(token: string): Promise<UserDocumentWithMethods | null>;
 }
 
 /**

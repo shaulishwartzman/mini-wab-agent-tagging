@@ -5,7 +5,7 @@
  * This file runs at the network boundary before the app handles the request.
  *
  * Behavior:
- * - Public: /, /login, /register-org, /admin/login, /api/auth/*, /api/organizations
+ * - Public: /, /login, /register-org, /admin/login, /forgot-password, /api/auth/*, /api/organizations
  * - Auth-required: All other routes (dashboard, users, admin, green-path, APIs)
  * - Role gates: /admin → SYSTEM_ADMIN; /users → CISO | MANAGER | SYSTEM_ADMIN
  * - Forced password change when JWT has mustChangePassword === true
@@ -29,6 +29,7 @@ const PUBLIC_ROUTES = [
   "/login",
   "/register-org",
   "/admin/login",
+  "/forgot-password",
   "/api/auth",
   "/api/organizations",
 ];

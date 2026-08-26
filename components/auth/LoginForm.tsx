@@ -19,6 +19,7 @@
 import { FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { slugify } from "@/lib/utils/slugify";
 import { LoginErrors } from "@/lib/errors/auth";
 import {
@@ -38,6 +39,7 @@ export function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
   const registered = searchParams.get("registered") === "1";
   const passwordChanged = searchParams.get("passwordChanged") === "1";
+  const passwordReset = searchParams.get("passwordReset") === "1";
 
   const [organizationName, setOrganizationName] = useState("");
   const [email, setEmail] = useState("");
@@ -92,6 +94,9 @@ export function LoginForm() {
       ) : null}
       {passwordChanged ? (
         <AuthSuccessBanner message="הסיסמה עודכנה בהצלחה. התחברו עם הסיסמה החדשה." />
+      ) : null}
+      {passwordReset ? (
+        <AuthSuccessBanner message="הסיסמה אופסה בהצלחה. התחברו עם הסיסמה החדשה. / Password reset successful. Login with your new password." />
       ) : null}
       <AuthErrorBanner message={error} />
 
@@ -149,6 +154,18 @@ export function LoginForm() {
           style={authInputStyle}
           dir="ltr"
         />
+        <div style={{ marginTop: 8, textAlign: "left" }}>
+          <Link
+            href="/forgot-password"
+            style={{
+              fontSize: 14,
+              color: "#3b82f6",
+              textDecoration: "none",
+            }}
+          >
+            שכחתי סיסמה / Forgot password?
+          </Link>
+        </div>
       </div>
 
       <button

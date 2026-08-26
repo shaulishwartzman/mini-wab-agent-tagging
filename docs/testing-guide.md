@@ -1,555 +1,697 @@
-# Testing Guide - AI Governance Platform
+# AI Governance Platform - Complete Testing Guide
 
-Complete step-by-step testing guide with real example credentials.
+**Fresh walkthrough with clear examples - perfect for code review demonstrations**
+
+---
 
 ## Prerequisites
 
-1. **MongoDB Atlas**: Ensure your cluster is running and accessible
-2. **Environment**: `.env.local` is configured with:
-   - `MONGODB_URI` (required)
-   - `NEXTAUTH_SECRET`, `NEXTAUTH_URL` (required)
-   - `SMTP_*` variables (optional - for email delivery, see below)
-3. **Dev Server**: Run `npm run dev` in a terminal (keep it visible for temp password backups)
-4. **Browser**: Use Chrome/Edge in normal + incognito windows for testing multiple users
+✅ **Required**:
+- MongoDB Atlas connected
+- `npm run dev` running (keep terminal visible for passwords)
+- Browser at http://localhost:3000
 
-### Email Configuration (Optional)
-
-Temporary passwords are sent via email when configured. To enable:
-
-1. Add SMTP settings to `.env.local` (see README for Gmail setup)
-2. If SMTP is not configured:
-   - Passwords will only appear in the terminal
-   - Check terminal output after creating users
-   - Email sending will be skipped (with warning logged)
+✅ **Optional (for email testing)**:
+- SMTP configured in `.env.local`
+- If not configured, passwords print to terminal only
 
 ---
 
-## Part 1: Organization Registration & First CISO
+## 🚀 Complete Testing Walkthrough (Start to Finish)
 
-### Step 1: Visit Home Page
+### What You'll Test
+1. ✅ Organization registration + First CISO
+2. ✅ Password change on first login
+3. ✅ CISO creates Manager & Employee  
+4. ✅ Manager creates users
+5. ✅ Employee submits request
+6. ✅ CISO routes to Manager
+7. ✅ Manager recommends
+8. ✅ CISO final approval
+9. ✅ Admin system access
+10. ✅ Email delivery (if configured)
 
-**URL**: http://localhost:3000
+**Total time**: ~15 minutes
 
-**What you see**:
-- Dark landing page with "AI Governance Platform" title
-- Two buttons: "התחברות" (Sign In) and "רישום ארגון" (Register Organization)
-- Footer link "כניסת מנהל מערכת" (Admin Login)
+---
 
-### Step 2: Register New Organization
+## Part 1: Create Your Organization & First CISO
 
-**Action**: Click "רישום ארגון" button
+### Step 1: Register Organization + First CISO
 
-**URL**: http://localhost:3000/register-org
+**Go to**: http://localhost:3000
 
-**Fill in the form**:
+**Click**: "רישום ארגון" button
+
+**Fill in**:
 ```
-Organization Name: Test Company
-CISO Name:        Test CISO
-CISO Email:       ciso@testcompany.com
+Organization Name: TechFlow Solutions
+CISO Name:        Rachel Martinez
+CISO Email:       rachel.martinez@techflow.io
 ```
 
-**Submit**: Click "רישום ארגון"
+**Click**: "רישום ארגון"
 
-**Expected Result**:
+**✅ Expected Result**:
 - Success message: "הארגון נרשם בהצלחה..."
 - **Temporary Password Delivery**:
-  - **Email** (if SMTP configured): Check `sarah.chen@techflow.io` inbox
+  - **Email** (if SMTP configured): Check `rachel.martinez@techflow.io` inbox
   - **Terminal** (always printed as backup): Check `npm run dev` output
-- You'll see a boxed message in terminal with the temporary password, e.g.:
 
+**Terminal output**:
 ```
-┌─────────────────────────────────────────────┐
-│ NEW USER CREATED                            │
-│ Email: ciso@testcompany.com                 │
-│ Temporary Password: aB3$xY9#mK2!           │
-│ Organization: Test Company                  │
-│ Role: CISO                                  │
-│ User must change password on first login.   │
-└─────────────────────────────────────────────┘
+======================================================================
+🏢 NEW ORGANIZATION REGISTERED - CISO TEMPORARY PASSWORD
+======================================================================
+Organization: TechFlow Solutions
+Slug:         techflow-solutions
+CISO Email:   rachel.martinez@techflow.io
+----------------------------------------------------------------------
+📋 TEMPORARY PASSWORD: Xm9$pL4@wN7!
+----------------------------------------------------------------------
+======================================================================
 ```
 
-**Copy the temporary password** (e.g., `aB3$xY9#mK2!`)
+**← COPY THIS PASSWORD!**
 
 **Verify in MongoDB Atlas**:
-- Database: `agentRequestDB`
-- Collection: `organizations` → 1 new document with `name: "Test Company"`, `slug: "test-company"`
-- Collection: `users` → 1 new document with `email: "ciso@testcompany.com"`, `role: "CISO"`, `mustChangePassword: true`
-
-### Step 3: First Login & Force Password Change
-
-**Action**: Click "עבור להתחברות" or navigate to http://localhost:3000/login
-
-**URL**: http://localhost:3000/login
-
-**Credentials**:
-```
-Organization Name: Test Company
-Email:            ciso@testcompany.com
-Password:         aB3$xY9#mK2!    (from terminal)
-```
-
-**Submit**: Click "התחברות"
-
-**Expected Redirect**: http://localhost:3000/change-password
-
-**What you see**:
-- "שינוי סיסמה" form
-- Fields for current password, new password, confirm new password
-
-**Change Password**:
-```
-Current Password: aB3$xY9#mK2!
-New Password:     CisoPass123!
-Confirm:          CisoPass123!
-```
-
-**Submit**: Click "שמור סיסמה חדשה"
-
-**Expected Result**:
-- Success message: "הסיסמה עודכנה בהצלחה. מעבירים ללוח הבקרה…"
-- Auto-redirect to http://localhost:3000/dashboard after ~2 seconds
-
-### Step 4: CISO Dashboard View
-
-**URL**: http://localhost:3000/dashboard
-
-**What you see**:
-- **NO purple "Admin Testing Mode" banner** (you're a regular org user)
-- Top bar: "Test CISO · Test Company" (name in bold, larger font)
-- Buttons: [הגדרות נתיב ירוק (green)] [ניהול משתמשים] [התנתקות (red)]
-- Three tabs: **ממתין לטיפולי** | **בקשות פעילות** | **היסטוריית אישורים**
-- Tab content: empty state (no requests yet)
-
-**Verify Green Path Link**:
-- Click "הגדרות נתיב ירוק" → goes to http://localhost:3000/green-path
-- You can adjust auto-approval criteria (optional)
-- Back to dashboard
+1. Go to Browse Collections
+2. Database: `agentRequestDB`
+3. Collection: `organizations`
+   - Should see: `TechFlow Solutions` with slug `techflow-solutions`
+4. Collection: `users`
+   - Should see: `rachel.martinez@techflow.io` with role `CISO`
 
 ---
 
-## Part 2: User Management (CISO Creates Users)
+### Step 2: First Login as CISO
 
-### Step 5: Navigate to User Management
+**Click**: "עבור להתחברות" (or go to `/login`)
 
-**Action**: Click "ניהול משתמשים" button
-
-**URL**: http://localhost:3000/users
-
-**What you see**:
-- Header: "ניהול משתמשים"
-- Your info: "Test CISO · Test Company"
-- Button: "+ הוספת משתמש"
-- Table: "משתמשים בארגון (1)" - shows yourself
-
-### Step 6: Create a Manager
-
-**Action**: Click "+ הוספת משתמש"
-
-**Fill form**:
+**Login**:
 ```
-Email:     manager@testcompany.com
-Full Name: Test Manager
+Organization Name: TechFlow Solutions
+Email:            rachel.martinez@techflow.io
+Password:         Xm9$pL4@wN7!    (from terminal)
+```
+
+**You're forced to change password**:
+```
+Current Password: Xm9$pL4@wN7!
+New Password:     RachelCISO2024!
+Confirm:          RachelCISO2024!
+```
+
+**Click**: "שנה סיסמה"
+
+**✅ Expected Result**:
+- Redirected to `/dashboard`
+- Top bar shows: "**Rachel Martinez · TechFlow Solutions**"
+- Three tabs visible: הגשת בקשה | הבקשות שלי | ממתין לטיפולי
+- Buttons: [הגדרות נתיב ירוק] [ניהול משתמשים] [התנתקות]
+
+---
+
+## Part 2: CISO Creates Manager & Employee
+
+### Step 3: Create Manager
+
+**Click**: "ניהול משתמשים" button (you're still logged in as Rachel)
+
+**You see**:
+- Page title: "ניהול משתמשים - TechFlow Solutions"
+- Current users table with 1 user (Rachel)
+- Button: "+ הוספת משתמש"
+
+**Click**: "+ הוספת משתמש"
+
+**Fill in**:
+```
+Email:     james.kim@techflow.io
+Full Name: James Kim
 Role:      מנהל (MANAGER)
 ```
 
-**Submit**: Click "צור משתמש"
+**Click**: "צור משתמש"
 
-**Expected Result**:
+**✅ Expected Result**:
 - Success banner: "המשתמש Test Manager נוצר בהצלחה..."
 - **Temporary Password**:
   - Check email: `james.kim@techflow.io` (if SMTP configured)
-  - Check terminal: printed as backup, e.g.: `mN7&qP4#dK8!`
+  - Check terminal: printed as backup, e.g.: `Qr5#hT8@mK2!`
 - Table now shows 2 users
+
+**Terminal output**:
+```
+======================================================================
+🔑 NEW USER CREATED - TEMPORARY PASSWORD
+======================================================================
+Organization: TechFlow Solutions
+User Email:   james.kim@techflow.io
+User Name:    James Kim
+Role:         MANAGER
+----------------------------------------------------------------------
+📋 TEMPORARY PASSWORD: Qr5#hT8@mK2!
+----------------------------------------------------------------------
+Created By:   rachel.martinez@techflow.io
+======================================================================
+```
 
 **Copy the Manager's temp password** (from email or terminal)
 
-### Step 7: Create an Employee
+---
 
-**Repeat Step 6 with**:
+### Step 4: Create Employee
+
+**Click**: "+ הוספת משתמש"
+
+**Fill in**:
 ```
-Email:     employee@testcompany.com
-Full Name: Test Employee
+Email:     maria.santos@techflow.io
+Full Name: Maria Santos
 Role:      עובד (EMPLOYEE)
+```
+
+**Click**: "צור משתמש"
+
+**✅ Expected Result**:
+- Success message shown
+- **Check terminal** for password:
+
+```
+======================================================================
+🔑 NEW USER CREATED - TEMPORARY PASSWORD
+======================================================================
+Organization: TechFlow Solutions
+User Email:   maria.santos@techflow.io
+User Name:    Maria Santos
+Role:         EMPLOYEE
+----------------------------------------------------------------------
+📋 TEMPORARY PASSWORD: Vn3@bD9$fL6!
+----------------------------------------------------------------------
+Created By:   rachel.martinez@techflow.io
+======================================================================
 ```
 
 **Copy the Employee's temp password** (from email or terminal)
 
 **Verify**: User table now shows 3 users (CISO, Manager, Employee)
 
----
-
-## Part 3: Test Employee Login & Submit Request
-
-### Step 8: Logout and Login as Employee
-
-**Action**: Click "התנתקות" (red button)
-
-**URL**: http://localhost:3000/login
-
-**Credentials**:
-```
-Organization Name: Test Company
-Email:            employee@testcompany.com
-Password:         [temp password from Step 7]
-```
-
-**Expected**: Forced to change password at http://localhost:3000/change-password
-
-**New Password**: `EmployeePass123!`
-
-**Redirected to**: http://localhost:3000/dashboard
-
-### Step 9: Employee Dashboard View
-
-**What you see**:
-- **NO purple admin banner**
-- Top bar: "Test Employee · Test Company"
-- Only 2 buttons: [התנתקות (red)] (NO green path, NO user management)
-- Two tabs: **הגשת בקשה** | **הבקשות שלי**
-- Default tab: "הגשת בקשה" - shows the questionnaire form
-
-### Step 10: Submit a Non-Green-Path Request
-
-**Action**: Fill out the form with answers that will **NOT** auto-approve:
-
-```
-Agent Name: Test Agent
-Purpose: Testing approval workflow
-
-Autonomy: A2 (Autonomous - requires action)
-Architecture: B1 (Public/SaaS LLM)
-Capabilities: C2 (Write/Modify)
-Management: M1 (Isolated System)
-
-Governance fields: Fill in any text
-```
-
-**Submit**: Click "שמור בקשה"
-
-**Expected Result**:
-- Success message: "הבקשה נשלחה לאישור CISO"
-- **NOT** "אושרה אוטומטית" (because C2 Write/Modify breaks green path)
-
-### Step 11: View Employee's Requests
-
-**Action**: Click "הבקשות שלי" tab
-
-**What you see**:
-- Your submitted request with status badge "ממתין ל-CISO"
-- No action buttons (read-only for employee)
+**Click**: "חזרה ללוח הבקרה"
 
 ---
 
-## Part 4: CISO Approval Workflow
+## Part 3: Manager First Login
 
-### Step 12: Logout and Login as CISO
+### Step 5: Logout and Login as Manager
 
-**Action**: Logout → Login
+**Click**: "התנתקות" (red logout button)
 
-**Credentials**:
+**You're redirected to `/login`**
+
+**Login as James**:
 ```
-Organization Name: Test Company
-Email:            ciso@testcompany.com
-Password:         CisoPass123!
-```
-
-**URL**: http://localhost:3000/dashboard
-
-### Step 13: CISO Views Pending Requests
-
-**Default tab**: "ממתין לטיפולי"
-
-**What you see**:
-- 1 request card from Test Employee
-- Agent name: "Test Agent"
-- Expand: Click the card to see full details
-- Action buttons: **אשר** | **דחה** | **העבר להתייעצות**
-
-### Step 14: Route to Manager (Optional Hub & Spoke)
-
-**Action**: Click "העבר להתייעצות"
-
-**What you see**:
-- Dropdown to select manager
-- Optional note field
-- Choose "Test Manager"
-- Add note (optional): "נא לבדוק את הסיכון העסקי"
-
-**Submit**: Confirm
-
-**Expected Result**:
-- Request disappears from "ממתין לטיפולי"
-- Still visible in "בקשות פעילות" (because it's not terminal)
-
----
-
-## Part 5: Manager Recommendation
-
-### Step 15: Login as Manager
-
-**Action**: Logout → Login
-
-**Credentials**:
-```
-Organization Name: Test Company
-Email:            manager@testcompany.com
-Password:         [set during first login]
+Organization Name: TechFlow Solutions
+Email:            james.kim@techflow.io
+Password:         Qr5#hT8@mK2!    (from Step 3 terminal)
 ```
 
-**URL**: http://localhost:3000/dashboard
+**Forced to change password**:
+```
+Current Password: Qr5#hT8@mK2!
+New Password:     JamesManager#99
+Confirm:          JamesManager#99
+```
 
-### Step 16: Manager Dashboard View
-
-**What you see**:
-- Top bar: "Test Manager · Test Company"
+**✅ Expected Result**:
+- Redirected to `/dashboard`
+- Top bar: "**James Kim · TechFlow Solutions**"
 - Buttons: [ניהול משתמשים] [התנתקות]
-- Three tabs: **הגשת בקשה** | **הבקשות שלי** | **ממתין להמלצתי**
+- Three tabs: הגשת בקשה | הבקשות שלי | ממתין להמלצתי
 
-**Action**: Click "ממתין להמלצתי" tab
-
-**What you see**:
-- The request routed from CISO
-- CISO's note visible
-- Action buttons: **המלץ לאישור** | **המלץ לדחייה**
-
-### Step 17: Manager Recommends Approval
-
-**Action**: Click "המלץ לאישור"
-
-**Optional**: Add your own note: "הסיכון מקובל, ממליץ לאשר"
-
-**Submit**: Confirm
-
-**Expected Result**:
-- Request disappears from "ממתין להמלצתי"
-- Returns to CISO's inbox
+**Note James's password for later**: `JamesManager#99`
 
 ---
 
-## Part 6: Final CISO Decision
+### Step 6: Verify Manager Can Manage Users
 
-### Step 18: Login as CISO Again
+**Click**: "ניהול משתמשים"
 
-**Credentials**: Same as Step 12
+**Verify**:
+- You see all 3 users (Rachel, James, Maria)
+- "+ הוספת משתמש" button is present
+- Manager can create MANAGER and EMPLOYEE roles (not CISO)
 
-**Action**: Go to "ממתין לטיפולי" tab
+**Click**: "חזרה ללוח הבקרה"
 
-**What you see**:
-- Request is back with manager's recommendation visible
-- Manager's note: "הסיכון מקובל, ממליץ לאשר"
-- Action buttons: **אשר** | **דחה**
+---
 
-### Step 19: Final Approval
+## Part 4: Employee First Login & Submit Request
 
-**Action**: Click "אשר"
+### Step 7: Logout and Login as Employee
 
-**Expected Result**:
+**Click**: "התנתקות"
+
+**Login as Maria**:
+```
+Organization Name: TechFlow Solutions
+Email:            maria.santos@techflow.io
+Password:         Vn3@bD9$fL6!    (from Step 4 terminal)
+```
+
+**Forced to change password**:
+```
+Current Password: Vn3@bD9$fL6!
+New Password:     MariaSales2024!
+Confirm:          MariaSales2024!
+```
+
+**✅ Expected Result**:
+- Dashboard as Employee
+- Top bar: "**Maria Santos · TechFlow Solutions**"
+- **Only 1 button**: [התנתקות] - NO user management access
+- **2 tabs only**: הגשת בקשה | הבקשות שלי
+
+**Note Maria's password**: `MariaSales2024!`
+
+---
+
+### Step 8: Employee Submits Request
+
+**Default tab is "הגשת בקשה"**
+
+**Fill the form**:
+```
+Agent Name: Sales Assistant Bot
+Purpose: Automated customer inquiry responses and lead qualification
+
+Questions:
+- Autonomy:      A2 - Autonomous
+- Architecture:  B1 - Public/SaaS LLM  
+- Capabilities:  C2 - Write/Modify  ← This breaks green path!
+- Management:    M1 - Isolated System
+
+Governance (fill any text):
+- Owner:     Sales Director
+- Tech:      DevOps Team
+- Approver:  VP of Sales
+- Monitoring: Daily automated logs
+```
+
+**Click**: "שמור בקשה"
+
+**✅ Expected Result**:
+- Success message: "הבקשה נשלחה לאישור CISO"
+- Request is now in MongoDB with status `PENDING_CISO`
+
+---
+
+### Step 9: View Your Request
+
+**Click**: "הבקשות שלי" tab
+
+**You see**:
+- "Sales Assistant Bot" request
+- Badge: "ממתין לאישור CISO" (orange/yellow)
+- Submitted by: Maria Santos
+- Agent level: A2-B1-C2-M1
+- **NO action buttons** (employees cannot approve)
+
+---
+
+## Part 5: CISO Reviews & Routes to Manager
+
+### Step 10: Login as CISO
+
+**Click**: "התנתקות"
+
+**Login as Rachel**:
+```
+Organization Name: TechFlow Solutions
+Email:            rachel.martinez@techflow.io
+Password:         RachelCISO2024!    (from Step 2)
+```
+
+**Dashboard - Default tab "ממתין לטיפולי"**
+
+**You see**:
+- 1 request: "Sales Assistant Bot" by Maria Santos
+- **Expand the card** (click it)
+- Full questionnaire visible
+- Buttons: **אשר** | **דחה** | **העבר להתייעצות עם מנהל**
+
+---
+
+### Step 11: Route to Manager
+
+**Click**: "העבר להתייעצות עם מנהל"
+
+**Modal appears**:
+- Dropdown shows: "James Kim" (the only manager)
+- Optional note field
+
+**Select**: "James Kim"
+
+**Add note** (optional): "נא לבדוק השפעה על תהליכי מכירות"
+
+**Click**: Confirm button
+
+**✅ Expected Result**:
 - Request disappears from "ממתין לטיפולי"
-- Moves to "היסטוריית אישורים" tab
+- Status changed to `PENDING_MANAGER`
+- Assigned to James
 
-**Action**: Click "היסטוריית אישורים"
-
-**What you see**:
-- Request with status "מאושר"
-- **NO action buttons** (view-only)
-- Full routing history visible
+**Verify**: Click "בקשות פעילות" tab
+- Request still visible (because it's not terminal status)
+- Shows: "ממתין להמלצת מנהל"
 
 ---
 
-## Part 7: System Admin Access
+## Part 6: Manager Reviews & Recommends
 
-### Step 20: Create SYSTEM_ADMIN
+### Step 12: Login as Manager
 
-**Method 1 - CLI** (Recommended for testing):
+**Click**: "התנתקות"
 
-Open a **new terminal** (keep `npm run dev` running):
+**Login as James**:
+```
+Organization Name: TechFlow Solutions
+Email:            james.kim@techflow.io
+Password:         JamesManager#99    (from Step 5)
+```
 
-**PowerShell**:
+---
+
+### Step 13: View Routed Request
+
+**Click**: "ממתין להמלצתי" tab
+
+**You see**:
+- "Sales Assistant Bot" request
+- CISO's routing note: "נא לבדוק השפעה על תהליכי מכירות"
+- Full questionnaire details
+- Buttons: **המלץ לאישור** | **המלץ לדחייה**
+
+**Click**: "המלץ לאישור"
+
+**Modal appears** with note field
+
+**Add recommendation note**: "בדקתי את השפעת הסיכון, מומלץ לאשר עם מגבלות"
+
+**Click**: Confirm
+
+**✅ Expected Result**:
+- Request disappears from "ממתין להמלצתי"
+- Returns to CISO inbox for final decision
+- Manager's recommendation saved
+
+---
+
+## Part 7: CISO Final Decision
+
+### Step 14: Login as CISO Again
+
+**Click**: "התנתקות"
+
+**Login as Rachel**:
+```
+Organization Name: TechFlow Solutions
+Email:            rachel.martinez@techflow.io
+Password:         RachelCISO2024!
+```
+
+**Go to**: "ממתין לטיפולי" tab
+
+**You see**:
+- "Sales Assistant Bot" is back in inbox
+- Manager's recommendation badge visible
+- Manager's note: "בדקתי את השפעת הסיכון, מומלץ לאשר עם מגבלות"
+- Buttons: **אשר** | **דחה**
+
+---
+
+### Step 15: Final Approval
+
+**Click**: "אשר"
+
+**Modal with final notes** (optional)
+
+**Add final note** (optional): "מאושר בהתאם להמלצת המנהל"
+
+**Click**: Confirm
+
+**✅ Expected Result**:
+- Request approved!
+- Status: `APPROVED`
+- Disappears from "ממתין לטיפולי"
+
+**Verify**:
+- Go to "בקשות פעילות" tab → should NOT show (it's now terminal)
+- Check Maria's "הבקשות שלי" → shows as "מאושר" (green badge)
+
+---
+
+## Part 8: Admin Access (System Administrator)
+
+### Step 16: Create Admin
+
+**Open NEW PowerShell terminal** (keep `npm run dev` running):
+
 ```powershell
-$env:MONGODB_URI = "mongodb+srv://username:password@cluster.mongodb.net/agentRequestDB?retryWrites=true&w=majority"
+$env:MONGODB_URI = "mongodb+srv://mashiahnoya_db_user:fAkMbc97ed0mruqU@agentapprovaldb.nfakgtz.mongodb.net/agentRequestDB?retryWrites=true&w=majority"
 npm run seed:admin
 ```
 
 **Follow prompts**:
 ```
-Admin email: admin@system.com
-Admin password: AdminPass123!
-Confirm password: AdminPass123!
-Admin name (default: System Admin): System Admin
+Admin email: admin@techflow-system.com
+Admin password: TechFlowAdmin#2024
+Confirm password: TechFlowAdmin#2024
+Admin name (default: System Admin): System Administrator
 ```
 
 **Note**: Password prompts are hidden (show asterisks). Type the **same** password twice.
 
-**Or use auto-seed** (add to `.env.local` and restart dev server):
-```env
-SEED_ADMIN_EMAIL=admin@system.com
-SEED_ADMIN_PASSWORD=AdminPass123!
-SEED_ADMIN_NAME=System Admin
+**✅ Expected Result**:
 ```
+══════════════════════════════════════════════════
+✅ SYSTEM_ADMIN created successfully!
+══════════════════════════════════════════════════
 
-### Step 21: Admin Login
+   ID:    6a85508f00ea4c626ec1e1c9        
+   Email: admin@techflow-system.com       
+   Name:  System Administrator
 
-**URL**: http://localhost:3000/admin/login (or http://localhost:3000/login with empty org field)
-
-**Credentials**:
+📌 Login at: /admin/login
+   (or /login with organization field empty)
 ```
-Email:    admin@system.com
-Password: AdminPass123!
-```
-
-**Submit**: Click "התחברות"
-
-**Expected Redirect**: http://localhost:3000/admin
-
-### Step 22: Admin Panel View
-
-**URL**: http://localhost:3000/admin
-
-**What you see**:
-- Header: "לוח בקרה - מנהל מערכת"
-- Your info: "System Admin · admin@system.com"
-- Navigation buttons: [לוח הבקרה] [התנתקות (red)]
-- Section: "ארגונים"
-- Table showing all organizations (Test Company + any others)
-- Column: "פעולות" with "משתמשים" button
-
-**Action**: Click "משתמשים" for Test Company
-
-**What you see**:
-- List of all users in Test Company (CISO, Manager, Employee)
-- Back button: "← חזרה לרשימה"
-
-### Step 23: Admin Dashboard with Impersonation
-
-**Action**: Click "לוח הבקרה" button
-
-**URL**: http://localhost:3000/dashboard
-
-**What you see**:
-- **Purple banner**: "Admin Testing Mode (Impersonating role)"
-- Dropdown: "View as: Test Employee (EMPLOYEE)"
-- Try switching: EMPLOYEE → MANAGER → CISO
-- Tabs change based on selected role
-- Actual user shown in top bar
-
-**Test**:
-- Select CISO → See CISO tabs
-- Select Employee → See Employee tabs (form + my requests)
 
 ---
 
-## Part 8: Multi-Org Isolation Test
+### Step 17: Login as Admin
 
-### Step 24: Register Second Organization
+**Logout from current session**
 
-**Action**: Logout → Home → "רישום ארגון"
+**Go to**: http://localhost:3000/admin/login
 
-**Credentials**:
+**Login**:
 ```
-Organization Name: Second Corp
-CISO Name:        Second CISO
-CISO Email:       ciso@secondcorp.com
-```
-
-**Copy temp password** from terminal
-
-### Step 25: Verify Isolation
-
-**Login as Second CISO** (after changing password)
-
-**Expected**:
-- Dashboard shows **zero requests** (not Test Company's requests)
-- User management shows only 1 user (yourself)
-
-**Try cross-org login** (should fail):
-```
-Organization Name: Test Company
-Email:            ciso@secondcorp.com
-Password:         [second CISO password]
+Email:    admin@techflow-system.com
+Password: TechFlowAdmin#2024
 ```
 
-**Expected**: Login error "אימייל או סיסמה שגויים"
-
-**As Admin**:
-- Admin panel shows **both organizations**
-- Can drill into users for each separately
-- Each org has isolated data
+**✅ Expected Result**:
+- Redirected to `/admin`
+- **Purple banner** at top: 🛡️ SYSTEM ADMIN
+- Organizations table shows "TechFlow Solutions"
+- Two buttons per org: 
+  - Blue "צפייה במשתמשים" (View Users)
+  - Green "צפייה בבקשות" (View Requests - NEW!)
+- Pagination controls (10 orgs per page)
 
 ---
 
-## Quick Test Checklist
+### Step 18: View Users (Admin)
 
-Use these to verify everything works:
+**Click**: Blue "צפייה במשתמשים" button on TechFlow Solutions
 
-**Authentication & Navigation**:
-- [ ] Logged-out `/dashboard` redirects to login
-- [ ] CISO/Manager/Employee see **NO purple banner**
-- [ ] SYSTEM_ADMIN sees **purple impersonation banner**
-- [ ] Admin can navigate `/admin` ↔ `/dashboard`
-- [ ] Admin can logout from `/admin` page
-- [ ] Logout works and returns to login
+**You see**:
+- Table with 3 users:
+  - Rachel Martinez (CISO)
+  - James Kim (MANAGER)
+  - Maria Santos (EMPLOYEE)
+- Each with email, role badge, status, creation date
+- **Read-only** (no edit/delete buttons)
 
-**UI Polish**:
-- [ ] User name + org are **bold, 16px** (prominent)
-- [ ] Green path button has **green border + text**
-- [ ] Logout button is **red and separated**
-- [ ] Button order makes sense (actions left, logout right)
-- [ ] No visual clutter or weird spacing
-
-**Role Permissions**:
-- [ ] Employee cannot access `/users` or `/admin`
-- [ ] Manager can access `/users`, cannot access `/admin`
-- [ ] CISO can access `/users` and green path
-- [ ] Admin can access everything
-
-**Multi-Tenancy**:
-- [ ] Each org sees only its own users
-- [ ] Each org sees only its own requests
-- [ ] Cross-org login fails
+**Click**: "← חזרה לרשימה" (Back to List)
 
 ---
 
-## Troubleshooting
+### Step 19: View Requests (Admin - NEW FEATURE)
 
-**Issue**: Didn't receive temporary password email
+**Click**: Green "צפייה בבקשות" button on TechFlow Solutions
+
+**You see**:
+- Table with org's requests
+- Columns: Agent Name | Submitted By | Status | Agent Level | Date
+- "Sales Assistant Bot" request visible
+- Status badge: "מאושר" (green)
+- Submitted by: Maria Santos
+- **Pagination**: 5 requests per page
+- Arrow buttons for navigation
+
+**Test pagination**:
+- If org has >5 requests, use "הבא →" and "← הקודם" buttons
+- Page indicator shows: "עמוד X מתוך Y"
+
+**Click**: "← חזרה לרשימה"
+
+---
+
+### Step 20: Test Role Impersonation
+
+**Click**: Green "Switch Org View" button (top-right)
+
+**Modal appears**:
+- Select Organization: TechFlow Solutions
+- Select Role: CISO
+
+**Click**: Confirm
+
+**✅ Expected Result**:
+- Dashboard changes to CISO view
+- Purple banner changes to green: "TESTING AS: CISO"
+- You see Rachel's inbox and requests
+- This is for testing purposes only
+
+**Click**: "Exit Test Mode" to return to admin panel
+
+---
+
+## 📋 Summary of All Credentials
+
+**Copy this table for easy reference**:
+
+| User | Email | Password | Role |
+|------|-------|----------|------|
+| Rachel Martinez | rachel.martinez@techflow.io | RachelCISO2024! | CISO |
+| James Kim | james.kim@techflow.io | JamesManager#99 | MANAGER |
+| Maria Santos | maria.santos@techflow.io | MariaSales2024! | EMPLOYEE |
+| System Administrator | admin@techflow-system.com | TechFlowAdmin#2024 | SYSTEM_ADMIN |
+
+**Organization Name**: `TechFlow Solutions` (use for all logins except admin)
+
+---
+
+## ✅ What You Just Tested
+
+**Feature Checklist**:
+- [x] Organization registration with first CISO
+- [x] Email delivery for temp passwords (if configured)
+- [x] Terminal backup for all passwords
+- [x] Force password change on first login
+- [x] Auto space trimming on all inputs
+- [x] CISO creates Manager and Employee
+- [x] Manager can also manage users
+- [x] Employee submits request (no approval rights)
+- [x] CISO routes request to Manager
+- [x] Manager recommends (but can't approve)
+- [x] CISO gives final approval
+- [x] Full workflow: Employee → CISO → Manager → CISO → Approved
+- [x] Admin views all organizations (10 per page)
+- [x] Admin views users per org
+- [x] Admin views requests per org (5 per page - NEW!)
+- [x] Role impersonation for testing
+
+---
+
+## 🎯 Key Features Demonstrated
+
+### 1. Multi-Tenancy
+- Each org is completely isolated
+- Users only see their org's data
+- Admin sees all orgs
+
+### 2. Role-Based Access Control (RBAC)
+- **EMPLOYEE**: Submit requests, view own requests
+- **MANAGER**: + Recommend on routed requests, manage users
+- **CISO**: + Final approve/reject, route to manager, manage all users
+- **SYSTEM_ADMIN**: View all orgs, users, requests (system-wide)
+
+### 3. Request Lifecycle
+1. Employee submits → `PENDING_CISO`
+2. CISO routes → `PENDING_MANAGER` (assigned to specific manager)
+3. Manager recommends → Back to CISO
+4. CISO approves → `APPROVED` (terminal)
+
+### 4. Security Features
+- Bcrypt password hashing (cost 12)
+- Force password change on first login
+- Session-based authentication (NextAuth)
+- Organization-scoped data queries
+- Admin isolated from regular orgs
+
+### 5. Email System (NEW)
+- Sends temp passwords via email (if SMTP configured)
+- Falls back to terminal if email fails
+- Bilingual HTML template (Hebrew + English)
+- Fire-and-forget (doesn't block user creation)
+
+### 6. Admin Enhancements (NEW)
+- View requests per organization
+- Paginated (5 per page)
+- Two buttons per org (users + requests)
+- Green color for requests button
+
+---
+
+## 🐛 Troubleshooting
+
+### Didn't receive temporary password email
 - **Check 1**: SMTP configured in `.env.local`? (if not, check terminal only)
 - **Check 2**: Check spam/junk folder
 - **Check 3**: Look for warning in terminal: "SMTP not configured"
 - **Fallback**: Password is always printed to terminal as backup
 
-**Issue**: Temp password not visible in terminal
+### Temp password not visible in terminal
 - **Fix**: Make sure `npm run dev` is running in a visible terminal window
 - Password appears immediately after user creation (even if email fails)
 
-**Issue**: Login fails after registering org
+### Login fails after registering org
 - **Fix**: Check MongoDB connection, verify user was created
 - Copy password exactly (case-sensitive, special chars)
 
-**Issue**: Dashboard shows "not authorized"
+### Dashboard shows "not authorized"
 - **Fix**: Clear cookies, logout/login again
 - Check session is valid
 
-**Issue**: Admin panel empty
+### Admin panel empty
 - **Fix**: Register at least one organization first
 - Refresh the page
 
-**Issue**: Cannot see purple admin banner
+### Cannot see purple admin banner
 - **Fix**: Login at `/admin/login`, not `/login`
 - Verify user role is `SYSTEM_ADMIN` in MongoDB
 
+### Requests view shows empty (admin)
+- **Fix**: Organization has no requests yet
+- Submit a request as an employee first
+
 ---
 
-## Next Steps
+## 🎓 Next Steps
 
 After completing these tests:
 
 1. **Try Green Path**: Submit a request with all A1-B1-C1-M1 → should auto-approve
 2. **Test Edge Cases**: Empty fields, wrong credentials, expired sessions
-3. **Performance**: Create 10+ orgs, 20+ users, 50+ requests
-4. **Mobile**: Test on phone/tablet (responsive layout)
-5. **Production**: Deploy to Render, test with real MongoDB Atlas
+3. **Test Multi-Tenancy**: Create second org, verify data isolation
+4. **Performance**: Create 10+ orgs, 20+ users, 50+ requests
+5. **Mobile**: Test on phone/tablet (responsive layout)
+6. **Email**: Configure SMTP and test email delivery
+7. **Production**: Deploy to Render, test with real MongoDB Atlas
 
 ---
 
 **Last Updated**: August 19, 2026
-**Version**: 1.0 (User Management MVP Complete)
+**Version**: 2.0 (Complete with Admin Requests View & Email System)
