@@ -62,6 +62,7 @@ export function GreenPathSettingsForm() {
   const [allowedAnswers, setAllowedAnswers] = useState<AllowedAnswersMap>(
     getDefaultAllowedAnswers()
   );
+  const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,8 +74,10 @@ export function GreenPathSettingsForm() {
     const res = await fetchGreenPathSettings();
     if (res.success && res.settings) {
       setAllowedAnswers(res.settings.allowedAnswers);
+      setEnabled(res.settings.enabled !== false);
     } else {
       setAllowedAnswers(getDefaultAllowedAnswers());
+      setEnabled(true);
       if (res.error) setError(res.error);
     }
     setLoading(false);
@@ -111,12 +114,18 @@ export function GreenPathSettingsForm() {
     const res = await saveGreenPathSettings(
       allowedAnswers,
       actor.role,
-      actor.id
+      actor.id,
+      enabled
     );
 
     if (res.success && res.settings) {
       setAllowedAnswers(res.settings.allowedAnswers);
-      setSuccessMsg("ההגדרות נשמרו בהצלחה");
+      setEnabled(res.settings.enabled !== false);
+      setSuccessMsg(
+        res.settings.enabled === false
+          ? "הנתיב הירוק כובה — אין אישור אוטומטי"
+          : "ההגדרות נשמרו בהצלחה"
+      );
     } else {
       setError(res.error || "שמירה נכשלה");
     }
@@ -131,7 +140,8 @@ export function GreenPathSettingsForm() {
     const res = await resetGreenPathSettings(actor.role, actor.id);
     if (res.success && res.settings) {
       setAllowedAnswers(res.settings.allowedAnswers);
-      setSuccessMsg("הוחזר לברירת המחדל (A1 / B1 / C1 / M1)");
+      setEnabled(res.settings.enabled !== false);
+      setSuccessMsg("הוחזר לברירת המחדל (נתיב ירוק פעיל, A1 / B1 / C1 / M1)");
     } else {
       setError(res.error || "איפוס נכשל");
     }
@@ -156,11 +166,56 @@ export function GreenPathSettingsForm() {
         margin: "0 auto",
       }}
     >
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          padding: 16,
+          borderRadius: 10,
+          border: enabled ? "2px solid #22c55e" : "2px solid #fca5a5",
+          backgroundColor: enabled ? "#f0fdf4" : "#fef2f2",
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            setEnabled(e.target.checked);
+            setSuccessMsg(null);
+          }}
+          style={{ marginTop: 3, width: 18, height: 18, accentColor: "#16a34a" }}
+        />
+        <span>
+          <span
+            style={{
+              display: "block",
+              fontSize: 15,
+              fontWeight: 700,
+              color: enabled ? "#166534" : "#991b1b",
+              marginBottom: 4,
+            }}
+          >
+            {enabled
+              ? "אישור אוטומטי פעיל (נתיב ירוק)"
+              : "אישור אוטומטי כבוי"}
+          </span>
+          <span style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+            {enabled
+              ? "בקשות שעומדות בקריטריונים למטה יאושרו אוטומטית ללא טיפול CISO."
+              : "כל הבקשות יועברו לאישור CISO. אין אישור אוטומטי."}
+          </span>
+        </span>
+      </label>
+
       <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.5 }}>
         בחר אילו תשובות סגורות מאפשרות אישור אוטומטי (נתיב ירוק). תשובת ״לא
         ידוע״ תמיד פוסלת אישור אוטומטי. פירוט ייעוד הסוכן ושדות ממשל חופשיים
         נשארים חובה כברירת מחדל.
       </p>
+
+      <div style={{ opacity: enabled ? 1 : 0.45, pointerEvents: enabled ? "auto" : "none" }}>
 
       {GREEN_PATH_QUESTION_IDS.map((questionId) => (
         <section key={questionId}>
@@ -217,6 +272,8 @@ export function GreenPathSettingsForm() {
           </div>
         </section>
       ))}
+
+      </div>
 
       {error && (
         <div

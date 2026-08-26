@@ -27,10 +27,25 @@ const allowedAnswersSchema = new Schema(
 
 const greenPathSettingsSchema = new Schema(
   {
-    /** Singleton key — always "default" for MVP. */
-    key: { type: String, required: true, unique: true, default: "default" },
+    /**
+     * Document key. Per-org docs use `org:<organizationId>`.
+     * Legacy singleton used "default".
+     */
+    key: { type: String, required: true },
     /** Allowed option ids per closed questionnaire dimension. */
     allowedAnswers: { type: allowedAnswersSchema, required: true },
+    /**
+     * When false, green-path auto-approval is off for this organization.
+     * All new requests go to CISO review.
+     */
+    enabled: { type: Boolean, default: true },
+    /** Organization these settings belong to (multi-tenant). */
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
     /** User id of CISO who last saved (audit). */
     updatedBy: { type: String, default: null },
   },

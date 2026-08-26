@@ -32,6 +32,12 @@ import {
  */
 export type CustomCriteria = {
   /**
+   * When false, skip auto-approval entirely (CISO turned green path off).
+   * Default: true (green path active).
+   */
+  enabled?: boolean;
+
+  /**
    * Override allowed answers per question.
    * Each question can have multiple allowed answers (array).
    *
@@ -199,6 +205,15 @@ export function evaluateForAutoApproval(
   try {
     const appliedCriteria = mergeWithDefaults(customCriteria);
     const skipChecks = customCriteria?.skipChecks ?? {};
+
+    if (customCriteria?.enabled === false) {
+      return {
+        eligible: false,
+        reason: "הנתיב הירוק כבוי — הבקשה מועברת לאישור CISO",
+        failedCriteria: ["green_path_disabled"],
+        appliedCriteria,
+      };
+    }
 
     // FAIL-SAFE: Check for disqualifying "unknown" answers first
     if (!skipChecks.disqualifyingAnswer) {

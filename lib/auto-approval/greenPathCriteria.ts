@@ -73,11 +73,13 @@ export function getDefaultAllowedAnswers(): AllowedAnswersMap {
  * Wrap an allowedAnswers map for the rules engine `customCriteria` arg.
  *
  * @param allowedAnswers - Per-question allowed option ids
+ * @param enabled - When false, auto-approval is skipped
  */
 export function toCustomCriteria(
-  allowedAnswers: AllowedAnswersMap | Record<string, string[]>
-): { allowedAnswers: Record<string, string[]> } {
-  return { allowedAnswers };
+  allowedAnswers: AllowedAnswersMap | Record<string, string[]>,
+  enabled = true
+): { allowedAnswers: Record<string, string[]>; enabled: boolean } {
+  return { allowedAnswers, enabled };
 }
 
 /**

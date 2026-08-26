@@ -28,6 +28,7 @@ import {
   type UserRole as UserRoleType,
 } from "@/lib/types";
 import { getAuthUser } from "@/lib/auth/session";
+import { loadGreenPathSettingsForOrg } from "@/lib/auto-approval/loadSettings";
 
 /** POST body: assessment fields plus optional workflow overrides. */
 type CreateRequestBody = AgentAssessmentPayload & {
@@ -129,7 +130,13 @@ export async function POST(req: Request) {
       role: user.role,
     });
 
-    const autoApprove = body.autoApprove === true;
+    const orgSettings = await loadGreenPathSettingsForOrg(user.organizationId);
+    const greenPathOn = orgSettings.enabled !== false;
+    const autoApprove = body.autoApprove === true && greenPathOn;
+    const autoApprovalEligible = greenPathOn && (body.autoApprovalEligible ?? false);
+    const autoApprovalReason = greenPathOn
+      ? (body.autoApprovalReason ?? null)
+      : "הנתיב הירוק כבוי — הבקשה מועברת לאישור CISO";
 
     const request = await AgentRequest.create({
       agentName: body.agentName.trim(),
@@ -149,8 +156,8 @@ export async function POST(req: Request) {
       submittedByUserId: body.submittedByUserId,
       submittedByName: user.name,
       agentPurpose,
-      autoApprovalEligible: body.autoApprovalEligible ?? false,
-      autoApprovalReason: body.autoApprovalReason ?? null,
+      autoApprovalEligible,
+      autoApprovalReason,
       approvedBy: autoApprove ? "SYSTEM_AUTO_APPROVAL" : null,
       resolvedAt: autoApprove ? new Date() : null,
     });

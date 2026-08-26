@@ -18,6 +18,7 @@ import {
 /** Settings payload returned by the API. */
 export type GreenPathSettingsPayload = {
   allowedAnswers: AllowedAnswersMap;
+  enabled: boolean;
   updatedBy: string | null;
   updatedAt: string | null;
   isDefault: boolean;
@@ -53,13 +54,14 @@ export async function fetchGreenPathSettings(): Promise<GreenPathSettingsResult>
 export async function saveGreenPathSettings(
   allowedAnswers: AllowedAnswersMap,
   actorRole: (typeof UserRole)[keyof typeof UserRole],
-  actorUserId: string
+  actorUserId: string,
+  enabled = true
 ): Promise<GreenPathSettingsResult> {
   try {
     const res = await fetch("/api/green-path-settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ allowedAnswers, actorRole, actorUserId }),
+      body: JSON.stringify({ allowedAnswers, actorRole, actorUserId, enabled }),
     });
     const data = await res.json();
     if (res.status === 403) {
@@ -84,6 +86,7 @@ export async function resetGreenPathSettings(
   return saveGreenPathSettings(
     getDefaultAllowedAnswers(),
     actorRole,
-    actorUserId
+    actorUserId,
+    true
   );
 }

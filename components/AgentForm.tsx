@@ -331,7 +331,10 @@ export default function AgentForm() {
     const settingsRes = await fetchGreenPathSettings();
     const customCriteria =
       settingsRes.success && settingsRes.settings
-        ? toCustomCriteria(settingsRes.settings.allowedAnswers)
+        ? toCustomCriteria(
+            settingsRes.settings.allowedAnswers,
+            settingsRes.settings.enabled !== false
+          )
         : undefined;
 
     // Step 2: Evaluate for auto-approval using the rules engine

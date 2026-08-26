@@ -1,29 +1,30 @@
 /**
  * Green Path Settings API — CISO-configurable auto-approval criteria.
  *
- * - GET  /api/green-path-settings — current allowed answers (or defaults)
- * - PUT  /api/green-path-settings — save (CISO only)
+ * - GET  /api/green-path-settings — current org settings (or defaults)
+ * - PUT  /api/green-path-settings — save for the CISO's organization
  *
- * Used by the settings UI and by AgentForm on submit.
+ * Settings are per-organization. `enabled: false` turns off all auto-approval.
  *
  * @see models/GreenPathSettings.ts
  * @see lib/auto-approval/greenPathCriteria.ts
+ * @see lib/auto-approval/loadSettings.ts
  */
 
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import { connectDB } from "@/lib/db/mongodb";
 import GreenPathSettings from "@/models/GreenPathSettings";
 import { UserRole } from "@/lib/types";
 import {
   DISQUALIFYING_ANSWER,
   GREEN_PATH_QUESTION_IDS,
-  getDefaultAllowedAnswers,
   type AllowedAnswersMap,
   type GreenPathQuestionId,
 } from "@/lib/auto-approval/greenPathCriteria";
+import { loadGreenPathSettingsForOrg } from "@/lib/auto-approval/loadSettings";
 import { fields } from "@/components/questionnaire/fields";
-
-const SETTINGS_KEY = "default";
+import { getAuthUser } from "@/lib/auth/session";
 
 /** Valid option ids per question (excluding U0). */
 function getValidOptionIds(questionId: GreenPathQuestionId): Set<string> {
@@ -89,42 +90,20 @@ function validateAllowedAnswers(
 }
 
 /**
- * Load settings doc or return defaults (no write on GET).
- */
-async function loadSettingsPayload() {
-  const doc = await GreenPathSettings.findOne({ key: SETTINGS_KEY }).lean();
-  if (!doc) {
-    return {
-      allowedAnswers: getDefaultAllowedAnswers(),
-      updatedBy: null as string | null,
-      updatedAt: null as string | null,
-      isDefault: true,
-    };
-  }
-
-  const aa = doc.allowedAnswers as AllowedAnswersMap;
-  return {
-    allowedAnswers: {
-      q1_autonomy: aa.q1_autonomy ?? getDefaultAllowedAnswers().q1_autonomy,
-      q2_brain: aa.q2_brain ?? getDefaultAllowedAnswers().q2_brain,
-      q3_capability: aa.q3_capability ?? getDefaultAllowedAnswers().q3_capability,
-      q4_management: aa.q4_management ?? getDefaultAllowedAnswers().q4_management,
-    },
-    updatedBy: doc.updatedBy ?? null,
-    updatedAt: doc.updatedAt
-      ? new Date(doc.updatedAt as Date).toISOString()
-      : null,
-    isDefault: false,
-  };
-}
-
-/**
- * GET current green path settings (defaults if none saved).
+ * GET current green path settings for the caller's organization.
  */
 export async function GET() {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     await connectDB();
-    const settings = await loadSettingsPayload();
+    const settings = await loadGreenPathSettingsForOrg(user.organizationId);
     return NextResponse.json({ success: true, settings });
   } catch {
     return NextResponse.json(
@@ -136,24 +115,44 @@ export async function GET() {
 
 type PutBody = {
   allowedAnswers?: unknown;
+  enabled?: unknown;
   actorRole?: unknown;
   actorUserId?: string;
 };
 
 /**
- * PUT upsert green path settings (CISO only).
+ * PUT upsert green path settings for the CISO's organization.
  */
 export async function PUT(req: Request) {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const body: PutBody = await req.json();
 
-    if (body.actorRole !== UserRole.CISO) {
+    const isCisoActor =
+      user.role === UserRole.CISO ||
+      (user.role === UserRole.SYSTEM_ADMIN && body.actorRole === UserRole.CISO);
+
+    if (!isCisoActor) {
       return NextResponse.json(
         {
           success: false,
           error: "Only CISO can update green path settings",
         },
         { status: 403 },
+      );
+    }
+
+    if (!user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "User has no organization" },
+        { status: 400 },
       );
     }
 
@@ -165,14 +164,19 @@ export async function PUT(req: Request) {
       );
     }
 
+    const enabled = body.enabled !== false;
+    const organizationId = new mongoose.Types.ObjectId(user.organizationId);
+
     await connectDB();
 
     const doc = await GreenPathSettings.findOneAndUpdate(
-      { key: SETTINGS_KEY },
+      { organizationId },
       {
-        key: SETTINGS_KEY,
+        key: `org:${user.organizationId}`,
+        organizationId,
         allowedAnswers: validated.value,
-        updatedBy: body.actorUserId ?? null,
+        enabled,
+        updatedBy: body.actorUserId ?? user.id ?? null,
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     ).lean();
@@ -181,6 +185,7 @@ export async function PUT(req: Request) {
       success: true,
       settings: {
         allowedAnswers: validated.value,
+        enabled,
         updatedBy: doc?.updatedBy ?? body.actorUserId ?? null,
         updatedAt: doc?.updatedAt
           ? new Date(doc.updatedAt as Date).toISOString()
