@@ -34,6 +34,7 @@ import {
   isAuthorizedForAction,
 } from "@/lib/requests/transitions";
 import { RequestAction, RequestStatus, UserRole, type ManagerRecommendation, type UserRole as UserRoleType } from "@/lib/types";
+import { getAuthUser } from "@/lib/auth/session";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -106,6 +107,14 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
 
     await connectDB();
 
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const request = await AgentRequest.findById(id);
 
     if (!request) {
@@ -113,6 +122,18 @@ async function updateRequestStatus(req: Request, context: RouteContext) {
         { success: false, error: "Request not found" },
         { status: 404 },
       );
+    }
+
+    if (user.role !== UserRole.SYSTEM_ADMIN) {
+      const requestOrgId = request.organizationId
+        ? String(request.organizationId)
+        : "";
+      if (!user.organizationId || requestOrgId !== user.organizationId) {
+        return NextResponse.json(
+          { success: false, error: "Request is not in your organization" },
+          { status: 403 },
+        );
+      }
     }
 
     const previousStatus = request.status;
@@ -225,16 +246,37 @@ export async function DELETE(_req: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
 
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     await connectDB();
 
-    const deleted = await AgentRequest.findByIdAndDelete(id);
-
-    if (!deleted) {
+    const existing = await AgentRequest.findById(id);
+    if (!existing) {
       return NextResponse.json(
         { success: false, error: "Request not found" },
         { status: 404 },
       );
     }
+
+    if (user.role !== UserRole.SYSTEM_ADMIN) {
+      const requestOrgId = existing.organizationId
+        ? String(existing.organizationId)
+        : "";
+      if (!user.organizationId || requestOrgId !== user.organizationId) {
+        return NextResponse.json(
+          { success: false, error: "Request is not in your organization" },
+          { status: 403 },
+        );
+      }
+    }
+
+    await AgentRequest.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });
   } catch {

@@ -16,6 +16,7 @@
  */
 
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import { connectDB } from "@/lib/db/mongodb";
 import AgentRequest from "@/models/AgentRequest";
 import User from "@/models/User";
@@ -26,6 +27,7 @@ import {
   type RequestStatus as RequestStatusType,
   type UserRole as UserRoleType,
 } from "@/lib/types";
+import { getAuthUser } from "@/lib/auth/session";
 
 /** POST body: assessment fields plus optional workflow overrides. */
 type CreateRequestBody = AgentAssessmentPayload & {
@@ -43,6 +45,14 @@ function isUserRole(value: string): value is UserRoleType {
 /** @returns Whether `value` is a known RequestStatus. */
 function isRequestStatus(value: string): value is RequestStatusType {
   return Object.values(RequestStatus).includes(value as RequestStatusType);
+}
+
+/** Parse a Mongo ObjectId string, or null if invalid. */
+function parseObjectId(value: string | null | undefined): mongoose.Types.ObjectId | null {
+  if (!value || !mongoose.Types.ObjectId.isValid(value)) {
+    return null;
+  }
+  return new mongoose.Types.ObjectId(value);
 }
 
 /**
@@ -165,21 +175,30 @@ export async function POST(req: Request) {
  * - `assignedTo` — filter by role inbox (EMPLOYEE | MANAGER | CISO)
  * - `assignedToUserId` — filter by specific user assignment (for manager routing)
  * - `submittedByUserId` — filter by who submitted the request
- * - `organizationId` — filter by organization (for SYSTEM_ADMIN viewing org requests)
- * - `status` — single status, or comma-separated list for `$in` match
- *   (e.g. `PENDING_CISO,PENDING_MANAGER` for active/open requests)
- * - `page` — page number (default: 1)
- * - `limit` — items per page (default: 10, max: 50)
+ * - `organizationId` — SYSTEM_ADMIN only (view one org). Org users are always
+ *   scoped to their own organization from the session.
+ *
+ * Tenant isolation:
+ * - CISO / MANAGER / EMPLOYEE always see only their organization's requests
+ * - SYSTEM_ADMIN may pass `organizationId` (admin org requests list)
  *
  * Used by CISO dashboard filters:
- * - ממתין לטיפולי → `assignedTo=CISO`
+ * - ממתין לטיפולי → `assignedTo=CISO` (plus session organizationId)
  * - בקשות פעילות → `status=PENDING_CISO,PENDING_MANAGER`
  * - אושרו אוטומטית → `status=AUTO_APPROVED`
  *
- * @returns `{ success, requests, pagination }` or `400` / `500` error payload
+ * @returns `{ success, requests, pagination }` or `400` / `401` / `500` error payload
  */
 export async function GET(req: Request) {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     await connectDB();
 
     const { searchParams } = new URL(req.url);
@@ -188,7 +207,7 @@ export async function GET(req: Request) {
     const assignedTo = searchParams.get("assignedTo");
     const assignedToUserId = searchParams.get("assignedToUserId");
     const submittedByUserId = searchParams.get("submittedByUserId");
-    const organizationId = searchParams.get("organizationId");
+    const organizationIdParam = searchParams.get("organizationId");
     const status = searchParams.get("status");
 
     // Pagination params (with bounds)
@@ -197,6 +216,29 @@ export async function GET(req: Request) {
 
     // Mongo filter may include `$in` for multi-status queries
     const filter: Record<string, unknown> = {};
+
+    // Tenant isolation: org-bound users cannot query other organizations
+    if (user.role === UserRole.SYSTEM_ADMIN) {
+      if (organizationIdParam) {
+        const adminOrgId = parseObjectId(organizationIdParam);
+        if (!adminOrgId) {
+          return NextResponse.json(
+            { success: false, error: "Invalid organizationId" },
+            { status: 400 },
+          );
+        }
+        filter.organizationId = adminOrgId;
+      }
+    } else {
+      const orgId = parseObjectId(user.organizationId);
+      if (!orgId) {
+        return NextResponse.json(
+          { success: false, error: "User has no organization" },
+          { status: 400 },
+        );
+      }
+      filter.organizationId = orgId;
+    }
 
     // Validate and apply assignedTo filter
     if (assignedTo) {
@@ -220,11 +262,6 @@ export async function GET(req: Request) {
     // Apply submittedByUserId filter (for "my requests" view)
     if (submittedByUserId) {
       filter.submittedByUserId = submittedByUserId;
-    }
-
-    // Apply organizationId filter (for SYSTEM_ADMIN viewing org requests)
-    if (organizationId) {
-      filter.organizationId = organizationId;
     }
 
     // Validate and apply status filter (single value or comma-separated list)
