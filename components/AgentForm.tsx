@@ -38,7 +38,11 @@ import {
   getReadableAnswer,
   type AgentCard,
 } from "@/lib/utils/requestHelpers";
-import { RequestStatus } from "@/lib/types";
+import { RequestStatus, UserRole } from "@/lib/types";
+
+function isUserRole(value: string): value is UserRole {
+  return (Object.values(UserRole) as string[]).includes(value);
+}
 
 const theme = {
   primary: "#2563eb",
@@ -238,9 +242,13 @@ function RenderPrettyCard({
   );
 }
 
+const AGENT_PURPOSE_TOOLTIP =
+  "מה זה בוחן? את הייעוד העסקי של הסוכן — למה הוא קיים בארגון ומה הוא אמור לבצע.\nאיך לברר? תארו בקצרה את המשימה העיקרית, למי הוא מיועד, ואיזה תהליך עבודה הוא מחליף או משפר.";
+
 export default function AgentForm() {
   const { data: session } = useSession();
   const [agentName, setAgentName] = useState("");
+  const [agentPurpose, setAgentPurpose] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<AgentCard | null>(null);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
@@ -303,11 +311,17 @@ export default function AgentForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!currentUser?.id || !currentUser?.role) {
+    if (!currentUser?.id || !currentUser.role || !isUserRole(currentUser.role)) {
       setError("User session not found. Please refresh and try again.");
       return;
     }
     
+    const trimmedPurpose = agentPurpose.trim();
+    if (!trimmedPurpose) {
+      setError("נא למלא את פירוט ייעוד הסוכן / Please describe the agent's purpose");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setSuccessMsg(null);
@@ -321,7 +335,11 @@ export default function AgentForm() {
         : undefined;
 
     // Step 2: Evaluate for auto-approval using the rules engine
-    const evaluation = evaluateForAutoApproval(answers, customCriteria);
+    // Include agent purpose so green path treats it as a required text field
+    const evaluation = evaluateForAutoApproval(
+      { ...answers, agent_purpose: trimmedPurpose },
+      customCriteria
+    );
     setAutoApprovalEligible(evaluation.eligible);
 
     // Step 3: Create the agent card
@@ -334,6 +352,7 @@ export default function AgentForm() {
     // Step 4: Submit to API with auto-approval info
     const res = await createRequest({
       agentName: card.agentName,
+      agentPurpose: trimmedPurpose,
       answers,
       classification: card.classification,
       agentLevel: card.agentLevel,
@@ -356,6 +375,7 @@ export default function AgentForm() {
       }
       await loadAgents();
       setAgentName("");
+      setAgentPurpose("");
       setAnswers({});
     } else {
       setError(res.error || "Failed to save request");
@@ -465,6 +485,47 @@ export default function AgentForm() {
               boxSizing: "border-box",
               color: theme.textMain,
               textAlign: "right",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label
+            htmlFor="agentPurpose"
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: theme.textMain,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 4,
+            }}
+          >
+            <span style={{ flex: 1 }}>פירוט ייעוד הסוכן:</span>
+            <FieldHelpTooltip text={AGENT_PURPOSE_TOOLTIP} />
+          </label>
+          <textarea
+            id="agentPurpose"
+            placeholder="לדוגמה: מענה אוטומטי לפניות לקוחות, סינון לידים והפניה לנציג אנושי כשנדרש..."
+            value={agentPurpose}
+            onChange={(e) => setAgentPurpose(e.target.value)}
+            onBlur={(e) => setAgentPurpose(e.target.value.trim())}
+            required
+            rows={4}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: 8,
+              border: `1px solid ${theme.border}`,
+              backgroundColor: "#f1f5f9",
+              fontSize: 15,
+              outline: "none",
+              boxSizing: "border-box",
+              color: theme.textMain,
+              textAlign: "right",
+              resize: "vertical",
+              fontFamily: "inherit",
+              lineHeight: 1.5,
             }}
           />
         </div>

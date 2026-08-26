@@ -7,7 +7,7 @@
  * BUSINESS LOGIC:
  * A request is auto-approved ONLY if ALL conditions are met:
  * 1. All closed questions (A-B-C-M) match allowed answers
- * 2. All REQUIRED_TEXT_FIELDS are non-empty (for documentation/audit)
+ * 2. All REQUIRED_TEXT_FIELDS are non-empty (purpose + governance, for documentation/audit)
  * 3. No answers are DISQUALIFYING_ANSWER (U0 = unknown)
  *
  * CISO can customize allowed closed answers via /green-path (MongoDB).
@@ -85,6 +85,7 @@ export function toCustomCriteria(
  * Not editable via CISO settings UI in MVP.
  */
 export const REQUIRED_TEXT_FIELDS = [
+  "agent_purpose",
   "gov_owner",
   "gov_tech",
   "gov_approver",
@@ -118,6 +119,7 @@ export const GREEN_PATH_LABELS: Record<GreenPathQuestionId, string> = {
 };
 
 export const REQUIRED_TEXT_FIELD_LABELS: Record<RequiredTextField, string> = {
+  agent_purpose: "פירוט ייעוד הסוכן",
   gov_owner: "מנהל אחראי",
   gov_tech: "אחראי טכני",
   gov_approver: "מאשר שינויים",

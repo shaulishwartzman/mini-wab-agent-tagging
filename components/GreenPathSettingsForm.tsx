@@ -11,9 +11,11 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { fields } from "@/components/questionnaire/fields";
 import { useRole } from "@/contexts/RoleContext";
+import { UserRole } from "@/lib/types";
 import {
   DISQUALIFYING_ANSWER,
   GREEN_PATH_QUESTION_IDS,
@@ -46,7 +48,17 @@ function shortLabel(optionId: string, fullLabel: string): string {
 }
 
 export function GreenPathSettingsForm() {
-  const { currentUser } = useRole();
+  const { data: session } = useSession();
+  const { currentUser: roleContextUser } = useRole();
+  const actor = useMemo(() => {
+    if (session?.user?.role === UserRole.SYSTEM_ADMIN) {
+      return { role: roleContextUser.role, id: roleContextUser.id };
+    }
+    return {
+      role: (session?.user?.role ?? "") as (typeof UserRole)[keyof typeof UserRole],
+      id: session?.user?.id ?? "",
+    };
+  }, [session, roleContextUser]);
   const [allowedAnswers, setAllowedAnswers] = useState<AllowedAnswersMap>(
     getDefaultAllowedAnswers()
   );
@@ -98,8 +110,8 @@ export function GreenPathSettingsForm() {
 
     const res = await saveGreenPathSettings(
       allowedAnswers,
-      currentUser.role,
-      currentUser.id
+      actor.role,
+      actor.id
     );
 
     if (res.success && res.settings) {
@@ -116,7 +128,7 @@ export function GreenPathSettingsForm() {
     setError(null);
     setSuccessMsg(null);
 
-    const res = await resetGreenPathSettings(currentUser.role, currentUser.id);
+    const res = await resetGreenPathSettings(actor.role, actor.id);
     if (res.success && res.settings) {
       setAllowedAnswers(res.settings.allowedAnswers);
       setSuccessMsg("הוחזר לברירת המחדל (A1 / B1 / C1 / M1)");
@@ -146,8 +158,8 @@ export function GreenPathSettingsForm() {
     >
       <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.5 }}>
         בחר אילו תשובות סגורות מאפשרות אישור אוטומטי (נתיב ירוק). תשובת ״לא
-        ידוע״ תמיד פוסלת אישור אוטומטי. שדות ממשל חופשיים נשארים חובה כברירת
-        מחדל.
+        ידוע״ תמיד פוסלת אישור אוטומטי. פירוט ייעוד הסוכן ושדות ממשל חופשיים
+        נשארים חובה כברירת מחדל.
       </p>
 
       {GREEN_PATH_QUESTION_IDS.map((questionId) => (

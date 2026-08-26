@@ -2,6 +2,7 @@
  * CISO-only Green Path settings page.
  *
  * Route: /green-path
+ * Access is based on the authenticated session (or SYSTEM_ADMIN impersonating CISO).
  * Non-CISO roles see an unauthorized message.
  *
  * @see components/GreenPathSettingsForm.tsx
@@ -9,15 +10,24 @@
 
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { GreenPathSettingsForm } from "@/components/GreenPathSettingsForm";
 import { useRole } from "@/contexts/RoleContext";
 import { UserRole } from "@/lib/types";
 
 export default function GreenPathSettingsPage() {
-  const { currentUser } = useRole();
-  const isCiso = currentUser.role === UserRole.CISO;
+  const { data: session, status } = useSession();
+  const { currentUser: roleContextUser } = useRole();
+
+  const isCiso = useMemo(() => {
+    if (session?.user?.role === UserRole.SYSTEM_ADMIN) {
+      return roleContextUser.role === UserRole.CISO;
+    }
+    return session?.user?.role === UserRole.CISO;
+  }, [session, roleContextUser]);
 
   return (
     <>
@@ -74,7 +84,11 @@ export default function GreenPathSettingsPage() {
             Green Path Settings — קביעת תנאי האישור האוטומטי
           </p>
 
-          {isCiso ? (
+          {status === "loading" ? (
+            <div style={{ padding: 24, color: "#64748b", textAlign: "center" }}>
+              טוען...
+            </div>
+          ) : isCiso ? (
             <GreenPathSettingsForm />
           ) : (
             <div

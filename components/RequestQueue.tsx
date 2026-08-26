@@ -512,6 +512,23 @@ export function RequestQueue({
                       )}
                     </div>
 
+                    <div style={{ marginBottom: "16px" }}>
+                      <strong style={{ color: "#64748b", fontSize: "12px" }}>
+                        פירוט ייעוד הסוכן:
+                      </strong>
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#1e293b",
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          marginTop: "4px",
+                        }}
+                      >
+                        {request.agentPurpose?.trim() || "—"}
+                      </div>
+                    </div>
+
                     <RequestAnswersPanel answers={request.answers} />
 
                     {(currentUser.role === UserRole.CISO ||

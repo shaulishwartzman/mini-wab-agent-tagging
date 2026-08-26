@@ -66,6 +66,18 @@ export async function POST(req: Request) {
       );
     }
 
+    const agentPurpose =
+      typeof body.agentPurpose === "string" ? body.agentPurpose.trim() : "";
+    if (!agentPurpose) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Missing agentPurpose / נא למלא את פירוט ייעוד הסוכן",
+        },
+        { status: 400 },
+      );
+    }
+
     if (!body.submittedByUserId) {
       return NextResponse.json(
         { success: false, error: "Missing submittedByUserId" },
@@ -126,7 +138,7 @@ export async function POST(req: Request) {
       assignedTo: autoApprove ? null : UserRole.CISO,
       submittedByUserId: body.submittedByUserId,
       submittedByName: user.name,
-      agentPurpose: body.agentPurpose ?? "",
+      agentPurpose,
       autoApprovalEligible: body.autoApprovalEligible ?? false,
       autoApprovalReason: body.autoApprovalReason ?? null,
       approvedBy: autoApprove ? "SYSTEM_AUTO_APPROVAL" : null,

@@ -110,8 +110,8 @@ const agentRequestSchema = new Schema(
     /** Specific user ID assigned (for manager routing — current inbox holder). */
     assignedToUserId: { type: String, default: null },
 
-    /** Free-text description of agent's purpose (for CISO context, not auto-approval). */
-    agentPurpose: { type: String, default: "" },
+    /** Free-text description of agent's purpose (required on submit; CISO context, not auto-approval). */
+    agentPurpose: { type: String, default: "", trim: true },
 
     /** Who made the final decision: "SYSTEM_AUTO_APPROVAL" or user ID. */
     approvedBy: { type: String, default: null },

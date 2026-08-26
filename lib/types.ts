@@ -156,7 +156,7 @@ export type AgentAssessmentPayload = {
   submittedByUserId?: string;
   /** Role of the submitter (Employee or Manager when self-submitting). */
   submittedByRole?: UserRole;
-  /** Free-text description of agent's purpose (for CISO context, not auto-approval). */
+  /** Required free-text description of agent's purpose (for CISO context, not auto-approval). */
   agentPurpose?: string;
   /** Whether this request qualifies for green-path auto-approval. */
   autoApprovalEligible?: boolean;
