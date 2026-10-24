@@ -1,0 +1,323 @@
+/**
+ * Collection API for AI Agent assessment requests.
+ *
+ * - `POST /api/requests` — create a new request in MongoDB
+ * - `GET  /api/requests` — list requests with filters and pagination
+ *
+ * GET Query Params:
+ * - `assignedTo` — filter by role inbox (CISO, MANAGER)
+ * - `assignedToUserId` — filter by specific user (for manager routing)
+ * - `submittedByUserId` — filter by submitter (for "my requests")
+ * - `status` — single status or comma-separated list (e.g. PENDING_CISO,PENDING_MANAGER)
+ * - `page` — page number (default 1)
+ * - `limit` — items per page (default 10, max 50)
+ *
+ * Responses follow `{ success: true | false, ... }`.
+ */
+
+import { NextResponse } from "next/server";
+import mongoose from "mongoose";
+import { connectDB } from "@/lib/db/mongodb";
+import AgentRequest from "@/models/AgentRequest";
+import User from "@/models/User";
+import {
+  RequestStatus,
+  UserRole,
+  type AgentAssessmentPayload,
+  type RequestStatus as RequestStatusType,
+  type UserRole as UserRoleType,
+} from "@/lib/types";
+import { getAuthUser } from "@/lib/auth/session";
+import { loadGreenPathSettingsForOrg } from "@/lib/auto-approval/loadSettings";
+
+/** POST body: assessment fields plus optional workflow overrides. */
+type CreateRequestBody = AgentAssessmentPayload & {
+  /** When true, creates the request as AUTO_APPROVED (no inbox assignment). */
+  autoApprove?: boolean;
+  submittedByRole?: UserRoleType;
+  reviewNotes?: string;
+};
+
+/** @returns Whether `value` is a known UserRole. */
+function isUserRole(value: string): value is UserRoleType {
+  return Object.values(UserRole).includes(value as UserRoleType);
+}
+
+/** @returns Whether `value` is a known RequestStatus. */
+function isRequestStatus(value: string): value is RequestStatusType {
+  return Object.values(RequestStatus).includes(value as RequestStatusType);
+}
+
+/** Parse a Mongo ObjectId string, or null if invalid. */
+function parseObjectId(value: string | null | undefined): mongoose.Types.ObjectId | null {
+  if (!value || !mongoose.Types.ObjectId.isValid(value)) {
+    return null;
+  }
+  return new mongoose.Types.ObjectId(value);
+}
+
+/**
+ * Create a new agent assessment request.
+ *
+ * Body must include at least `agentName`. Defaults to `PENDING_CISO` / `assignedTo: CISO`.
+ * Pass `autoApprove: true` to create as `AUTO_APPROVED` with no assignee.
+ *
+ * New fields: submittedByUserId, agentPurpose, autoApprovalEligible, autoApprovalReason
+ *
+ * @returns `201` + `{ success, request }` or `400` / `500` error payload
+ */
+export async function POST(req: Request) {
+  try {
+    const body: CreateRequestBody = await req.json();
+
+    if (!body.agentName || typeof body.agentName !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Missing agentName" },
+        { status: 400 },
+      );
+    }
+
+    const agentPurpose =
+      typeof body.agentPurpose === "string" ? body.agentPurpose.trim() : "";
+    if (!agentPurpose) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Missing agentPurpose / נא למלא את פירוט ייעוד הסוכן",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!body.submittedByUserId) {
+      return NextResponse.json(
+        { success: false, error: "Missing submittedByUserId" },
+        { status: 400 },
+      );
+    }
+
+    await connectDB();
+
+    // Look up the user to get their organizationId (required for multi-tenant isolation)
+    // submittedByUserId is typically the user's MongoDB _id, but handle email fallback
+    let user;
+    try {
+      // Try as ObjectId first
+      user = await User.findById(body.submittedByUserId).lean();
+    } catch {
+      // If that fails (not a valid ObjectId), try as email
+      user = await User.findOne({ email: body.submittedByUserId }).lean();
+    }
+    
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 },
+      );
+    }
+
+    if (!user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "User has no organization" },
+        { status: 400 },
+      );
+    }
+
+    console.log("👤 Creating request for user:", {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
+
+    const orgSettings = await loadGreenPathSettingsForOrg(user.organizationId);
+    const greenPathOn = orgSettings.enabled !== false;
+    const autoApprove = body.autoApprove === true && greenPathOn;
+    const autoApprovalEligible = greenPathOn && (body.autoApprovalEligible ?? false);
+    const autoApprovalReason = greenPathOn
+      ? (body.autoApprovalReason ?? null)
+      : "הנתיב הירוק כבוי — הבקשה מועברת לאישור CISO";
+
+    const request = await AgentRequest.create({
+      agentName: body.agentName.trim(),
+      organizationId: user.organizationId,
+      answers: body.answers ?? {},
+      classification: body.classification ?? {},
+      agentLevel: body.agentLevel ?? "",
+      classificationExplanation: body.classificationExplanation ?? {},
+      governance: body.governance ?? {},
+      riskScenarios: body.riskScenarios ?? [],
+      submittedByRole: body.submittedByRole ?? UserRole.EMPLOYEE,
+      reviewNotes: body.reviewNotes ?? "",
+      status: autoApprove
+        ? RequestStatus.AUTO_APPROVED
+        : RequestStatus.PENDING_CISO,
+      assignedTo: autoApprove ? null : UserRole.CISO,
+      submittedByUserId: body.submittedByUserId,
+      submittedByName: user.name,
+      agentPurpose,
+      autoApprovalEligible,
+      autoApprovalReason,
+      approvedBy: autoApprove ? "SYSTEM_AUTO_APPROVAL" : null,
+      resolvedAt: autoApprove ? new Date() : null,
+    });
+
+    return NextResponse.json(
+      { success: true, request },
+      { status: 201 },
+    );
+  } catch (err) {
+    console.error("POST /api/requests error:", err);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * List agent assessment requests with filtering and pagination.
+ *
+ * Query params:
+ * - `assignedTo` — filter by role inbox (EMPLOYEE | MANAGER | CISO)
+ * - `assignedToUserId` — filter by specific user assignment (for manager routing)
+ * - `submittedByUserId` — filter by who submitted the request
+ * - `organizationId` — SYSTEM_ADMIN only (view one org). Org users are always
+ *   scoped to their own organization from the session.
+ *
+ * Tenant isolation:
+ * - CISO / MANAGER / EMPLOYEE always see only their organization's requests
+ * - SYSTEM_ADMIN may pass `organizationId` (admin org requests list)
+ *
+ * Used by CISO dashboard filters:
+ * - ממתין לטיפולי → `assignedTo=CISO` (plus session organizationId)
+ * - בקשות פעילות → `status=PENDING_CISO,PENDING_MANAGER`
+ * - אושרו אוטומטית → `status=AUTO_APPROVED`
+ *
+ * @returns `{ success, requests, pagination }` or `400` / `401` / `500` error payload
+ */
+export async function GET(req: Request) {
+  try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    await connectDB();
+
+    const { searchParams } = new URL(req.url);
+
+    // Filter params
+    const assignedTo = searchParams.get("assignedTo");
+    const assignedToUserId = searchParams.get("assignedToUserId");
+    const submittedByUserId = searchParams.get("submittedByUserId");
+    const organizationIdParam = searchParams.get("organizationId");
+    const status = searchParams.get("status");
+
+    // Pagination params (with bounds)
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "10", 10)));
+
+    // Mongo filter may include `$in` for multi-status queries
+    const filter: Record<string, unknown> = {};
+
+    // Tenant isolation: org-bound users cannot query other organizations
+    if (user.role === UserRole.SYSTEM_ADMIN) {
+      if (organizationIdParam) {
+        const adminOrgId = parseObjectId(organizationIdParam);
+        if (!adminOrgId) {
+          return NextResponse.json(
+            { success: false, error: "Invalid organizationId" },
+            { status: 400 },
+          );
+        }
+        filter.organizationId = adminOrgId;
+      }
+    } else {
+      const orgId = parseObjectId(user.organizationId);
+      if (!orgId) {
+        return NextResponse.json(
+          { success: false, error: "User has no organization" },
+          { status: 400 },
+        );
+      }
+      filter.organizationId = orgId;
+    }
+
+    // Validate and apply assignedTo filter
+    if (assignedTo) {
+      if (!isUserRole(assignedTo)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid assignedTo. Allowed: ${Object.values(UserRole).join(", ")}`,
+          },
+          { status: 400 },
+        );
+      }
+      filter.assignedTo = assignedTo;
+    }
+
+    // Apply assignedToUserId filter (for manager-specific routing)
+    if (assignedToUserId) {
+      filter.assignedToUserId = assignedToUserId;
+    }
+
+    // Apply submittedByUserId filter (for "my requests" view)
+    if (submittedByUserId) {
+      filter.submittedByUserId = submittedByUserId;
+    }
+
+    // Validate and apply status filter (single value or comma-separated list)
+    if (status) {
+      const statuses = status
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      for (const s of statuses) {
+        if (!isRequestStatus(s)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Invalid status "${s}". Allowed: ${Object.values(RequestStatus).join(", ")}`,
+            },
+            { status: 400 },
+          );
+        }
+      }
+
+      filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+    }
+
+    // Get total count for pagination
+    const total = await AgentRequest.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit);
+
+    // Fetch paginated results
+    const requests = await AgentRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    return NextResponse.json({
+      success: true,
+      requests,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
